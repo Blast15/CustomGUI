@@ -1,0 +1,149 @@
+# ============================================================================
+#  CUSTOMGUI - RECIPE MẪU CÓ CHÚ THÍCH
+# ============================================================================
+# Một file có thể chứa nhiều recipe. ID recipe phải duy nhất trên toàn plugin.
+# Sau khi sửa: /customgui reload. Recipe sai bị báo trong /customgui info.
+
+config-version: 1
+
+recipes:
+  # --------------------------------------------------------------------------
+  # RECIPE CƠ BẢN: vật phẩm -> vật phẩm
+  # --------------------------------------------------------------------------
+  diamond_from_emeralds:
+    enabled: true              # false = tạm ẩn và không cho thực thi
+    group: exchange            # menu lọc recipe bằng recipes.groups
+    category: vanilla          # bộ lọc phụ bằng recipes.categories
+    requirements:
+      - type: item
+        provider: vanilla      # vanilla | itemsadder | oraxen | nexo | mmoitems
+        material: EMERALD      # vanilla dùng material; plugin khác dùng id
+        amount: 8              # nguyên liệu cho MỖI lần giao dịch
+        consume: true          # true = trừ; false = chỉ cần sở hữu
+    results:
+      - type: give-item
+        provider: vanilla
+        material: DIAMOND
+        amount: 1
+
+  emeralds_from_iron:
+    enabled: true
+    group: exchange
+    category: vanilla
+    requirements:
+      - type: item
+        provider: vanilla
+        material: IRON_INGOT
+        amount: 16
+        consume: true
+    results:
+      - type: give-item
+        provider: vanilla
+        material: EMERALD
+        amount: 2
+
+  redstone_supply:
+    enabled: true
+    group: exchange
+    category: vanilla
+    requirements:
+      - {type: item, provider: vanilla, material: COPPER_INGOT, amount: 4, consume: true}
+    results:
+      - {type: give-item, provider: vanilla, material: REDSTONE, amount: 12}
+
+  lapis_supply:
+    enabled: true
+    group: exchange
+    category: vanilla
+    requirements:
+      - {type: item, provider: vanilla, material: COAL, amount: 16, consume: true}
+    results:
+      - {type: give-item, provider: vanilla, material: LAPIS_LAZULI, amount: 8}
+
+  # --------------------------------------------------------------------------
+  # NHIỀU NGUYÊN LIỆU: tất cả được kiểm tra trước, rồi mới commit một lần.
+  # --------------------------------------------------------------------------
+  golden_apple:
+    enabled: true
+    group: forge
+    category: vanilla
+    requirements:
+      - {type: item, provider: vanilla, material: GOLD_INGOT, amount: 8, consume: true}
+      - {type: item, provider: vanilla, material: APPLE, amount: 1, consume: true}
+    results:
+      - {type: give-item, provider: vanilla, material: GOLDEN_APPLE, amount: 1}
+
+  ender_chest:
+    enabled: true
+    group: forge
+    category: vanilla
+    requirements:
+      - {type: item, provider: vanilla, material: OBSIDIAN, amount: 8, consume: true}
+      - {type: item, provider: vanilla, material: ENDER_EYE, amount: 1, consume: true}
+    results:
+      - {type: give-item, provider: vanilla, material: ENDER_CHEST, amount: 1}
+
+  royal_anvil:
+    enabled: true
+    group: forge
+    category: vanilla
+    requirements:
+      - {type: item, provider: vanilla, material: IRON_BLOCK, amount: 3, consume: true}
+      - {type: item, provider: vanilla, material: IRON_INGOT, amount: 4, consume: true}
+    results:
+      - {type: give-item, provider: vanilla, material: ANVIL, amount: 1}
+
+  diamond_sword:
+    enabled: true
+    group: forge
+    category: vanilla
+    requirements:
+      - {type: item, provider: vanilla, material: DIAMOND, amount: 2, consume: true}
+      - {type: item, provider: vanilla, material: STICK, amount: 1, consume: true}
+    results:
+      - {type: give-item, provider: vanilla, material: DIAMOND_SWORD, amount: 1}
+
+# ============================================================================
+#  CÁC REQUIREMENT KHÁC - copy vào requirements của recipe khi cần
+# ============================================================================
+# Đây là tài liệu comment nên không ảnh hưởng quá trình load.
+#
+# Tiền qua Vault + economy plugin (tiền sẽ được trừ theo batch):
+#   - {type: money, amount: 1250.0}
+#
+# Quyền, level, tổng experience, world và game mode là ĐIỀU KIỆN,
+# hiện không bị trừ khi recipe thành công:
+#   - {type: permission, permission: vip.forge}
+#   - {type: level, amount: 30}
+#   - {type: experience, amount: 500}
+#   - {type: world, world: world}
+#   - {type: game-mode, game-mode: SURVIVAL}
+#
+# Điều kiện PlaceholderAPI:
+#   - type: placeholder
+#     placeholder: "%player_health%"
+#     operator: ">="             # ==, !=, >, >=, <, <=, contains, starts-with...
+#     value: "10"
+#     value-type: number          # string | number | boolean
+#
+# Tỉ lệ 0 < chance <= 1. Ví dụ 0.25 = 25%:
+#   - {type: chance, chance: 0.25}
+#
+# Item custom từ ItemsAdder/Oraxen/Nexo:
+#   - {type: item, provider: itemsadder, id: "namespace:ruby", amount: 5, consume: true}
+#
+# Item MMOItems cần cả item-type và id:
+#   - {type: item, provider: mmoitems, item-type: MATERIAL, id: MYTHRIL, amount: 5, consume: true}
+#
+# Provider bổ sung:
+#   - {type: item, provider: ecoitems, id: ruby, amount: 2, consume: true}
+#   - {type: item, provider: executableitems, id: thunder_blade, amount: 1, consume: true}
+#   - {type: item, provider: slimefun, id: CARBONADO, amount: 1, consume: true}
+#   - {type: item, provider: mythicmobs, id: SkeletonKingSword, amount: 1, consume: true}
+#   - {type: item, provider: mythiccrucible, id: CrucibleHammer, amount: 1, consume: true}
+#   - {type: item, provider: nova, id: "machines:star_shard", amount: 1, consume: true}
+#   - {type: item, provider: template, id: captured_ruby, amount: 1, consume: true}
+#
+# Result custom item dùng cùng định dạng identity:
+# results:
+#   - {type: give-item, provider: oraxen, id: legendary_blade, amount: 1}

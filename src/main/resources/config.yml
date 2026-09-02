@@ -1,0 +1,43 @@
+config-version: 1
+security:
+  allow-player-inventory-interaction: false
+  # 0 is never accepted here. "all" is capped to protect the main thread.
+  max-batch-size: 256
+
+messages:
+  no-permission: "<red>Bạn không có quyền.</red>"
+  missing-items: "<red>Bạn chưa đủ nguyên liệu.</red>"
+  provider-unavailable: "<red>Nguồn vật phẩm hiện không khả dụng.</red>"
+  inventory-changed: "<yellow>Túi đồ đã thay đổi, hãy thử lại.</yellow>"
+  transaction-busy: "<yellow>Giao dịch trước đang được xử lý.</yellow>"
+  transaction-rolled-back: "<red>Giao dịch lỗi và đã được hoàn tác.</red>"
+  transaction-failed: "<red>Không thể hoàn tất giao dịch.</red>"
+  success: "<green>Đã đổi thành công <white>%amount%</white> lần.</green>"
+  reload-success: "<green>Đã tải lại %menus% menu và %recipes% recipe.</green>"
+  reload-failed: "<red>Reload bị từ chối, cấu hình cũ vẫn hoạt động: %error%</red>"
+  unknown-menu: "<red>Không tồn tại menu %menu%.</red>"
+  unknown-recipe: "<red>Không tồn tại recipe %recipe%.</red>"
+  unknown-player: "<red>Không tìm thấy người chơi %player%.</red>"
+  player-required: "<red>Lệnh này cần một người chơi.</red>"
+  invalid-page: "<red>Số trang không hợp lệ.</red>"
+  invalid-amount: "<red>Số lần đổi không hợp lệ hoặc vượt giới hạn.</red>"
+  nothing-to-exchange: "<yellow>Không có lượt đổi hợp lệ nào.</yellow>"
+  menu-list: "<yellow>Menu:</yellow> <white>%menus%</white>"
+  info: "<gold>CustomGUI</gold> <gray>|</gray> %menus% menu, %recipes% recipe, %invalid% recipe lỗi"
+  providers: "<yellow>Item providers:</yellow> <white>%providers%</white>"
+  usage: "<yellow>/customgui open &lt;menu&gt; [player] [page] | editor | capture &lt;id&gt; [replace] | list | info | providers | reload | help</yellow>"
+  capture-usage: "<yellow>/customgui capture &lt;id&gt; [replace]</yellow> <gray>— cầm item trên tay chính.</gray>"
+  capture-success: "<green>Đã capture template <white>%item%</white> (%mode%). Tổng: %count%.</green>"
+  capture-failed: "<red>Không thể capture item: %error%</red>"
+  inventory-full: "<red>Túi đồ không đủ chỗ.</red>"
+  missing-money: "<red>Bạn không đủ tiền.</red>"
+  missing-level: "<red>Bạn chưa đủ cấp độ.</red>"
+  missing-experience: "<red>Bạn chưa đủ kinh nghiệm.</red>"
+  wrong-world: "<red>Bạn không ở đúng thế giới.</red>"
+  wrong-game-mode: "<red>Game mode hiện tại không phù hợp.</red>"
+  chance-failed: "<red>Lần thử này không thành công.</red>"
+  placeholder-failed: "<red>Bạn chưa đáp ứng điều kiện.</red>"
+  unsupported-requirement: "<red>Recipe có requirement chưa được hỗ trợ.</red>"
+  unsupported-result: "<red>Recipe có result chưa được hỗ trợ.</red>"
+  transaction-wrong-thread: "<red>Giao dịch bị từ chối vì sai execution context.</red>"
+  economy-compensation-failed: "<dark_red>Hoàn tiền thất bại; hãy báo quản trị viên mã %transaction_id%.</dark_red>"

@@ -1,0 +1,29 @@
+name: CustomGUI
+version: '${version}'
+main: dev.customgui.CustomGuiPlugin
+api-version: '1.21.11'
+description: YAML-driven GUI and transactional recipe engine. It does not define custom items.
+author: CustomGUI Contributors
+softdepend: [Vault, PlaceholderAPI, ItemsAdder, Oraxen, Nexo, MMOItems, AuraSkills, EcoItems, ExecutableItems, SCore, Slimefun, MythicMobs, MythicCrucible, Nova]
+commands:
+  customgui:
+    description: Open or administer CustomGUI menus
+    aliases: [cgui]
+    usage: /customgui <open|editor|capture|list|info|providers|reload|help>
+permissions:
+  customgui.open:
+    default: true
+  customgui.admin:
+    default: op
+  customgui.editor:
+    default: op
+  customgui.open.others:
+    default: op
+  customgui.bypass.*:
+    default: op
+  customgui.menu.upgrades:
+    default: true
+  customgui.menu.exchange:
+    default: true
+  customgui.menu.showcase:
+    default: true

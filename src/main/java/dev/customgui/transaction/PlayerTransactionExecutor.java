@@ -1,0 +1,209 @@
+package dev.customgui.transaction;
+
+import dev.customgui.integration.economy.EconomyBridge;
+import dev.customgui.integration.item.ItemProviderRegistry;
+import dev.customgui.integration.placeholder.PlaceholderBridge;
+import dev.customgui.recipe.ItemSpec;
+import dev.customgui.recipe.Recipe;
+import dev.customgui.requirement.PlaceholderComparison;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.UUID;
+import java.util.function.IntSupplier;
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+
+public final class PlayerTransactionExecutor {
+    private final ItemProviderRegistry providers;
+    private final EconomyBridge economy;
+    private final PlaceholderBridge placeholders;
+    private final IntSupplier maxBatchSize;
+    private final HashSet<UUID> busy = new HashSet<>();
+
+    public PlayerTransactionExecutor(ItemProviderRegistry providers, EconomyBridge economy, PlaceholderBridge placeholders,
+                                     IntSupplier maxBatchSize) {
+        this.providers = providers; this.economy = economy; this.placeholders = placeholders; this.maxBatchSize = maxBatchSize;
+    }
+
+    public TransactionResult execute(Player player, Recipe recipe) { return execute(player, recipe, 1); }
+
+    /** requestedBatch == 0 means the largest atomic batch allowed by inventory, money, outputs and the configured cap. */
+    public TransactionResult execute(Player player, Recipe recipe, int requestedBatch) {
+        UUID id = UUID.randomUUID();
+        if (!Bukkit.isPrimaryThread()) return result(id, TransactionResult.Status.FAILED, "transaction-wrong-thread", 0);
+        if (requestedBatch < 0 || requestedBatch > maxBatchSize.getAsInt()) return result(id, TransactionResult.Status.REJECTED, "invalid-amount", 0);
+        if (!busy.add(player.getUniqueId())) return result(id, TransactionResult.Status.BUSY, "transaction-busy", 0);
+        try {
+            for (var requirement : recipe.requirements()) if (!isItemOrMoney(requirement.type())) {
+                String failed = checkNonItem(player, requirement);
+                if (failed != null) return result(id, TransactionResult.Status.REJECTED, failed, 0);
+            }
+            ItemStack[] before = InventorySimulation.cloneContents(player.getInventory().getStorageContents());
+            Plan plan;
+            int batch;
+            if (requestedBatch == 0) {
+                plan = null; batch = 0; String lastFailure = "nothing-to-exchange";
+                int upperBound = batchUpperBound(player, recipe, before, maxBatchSize.getAsInt());
+                for (int candidate = upperBound; candidate >= 1; candidate--) {
+                    var attempt = plan(player, recipe, before, candidate);
+                    if (attempt.plan() != null) { plan = attempt.plan(); batch = candidate; break; }
+                    lastFailure = attempt.failure();
+                    if (!isCapacityFailure(lastFailure)) break;
+                }
+                if (plan == null) return result(id, TransactionResult.Status.REJECTED, lastFailure, 0);
+            } else {
+                batch = requestedBatch;
+                var attempt = plan(player, recipe, before, batch);
+                if (attempt.plan() == null) return result(id, TransactionResult.Status.REJECTED, attempt.failure(), 0);
+                plan = attempt.plan();
+            }
+
+            var inventory = player.getInventory();
+            ItemStack[] snapshot = InventorySimulation.cloneContents(inventory.getStorageContents());
+            for (var removal : plan.removals()) {
+                var stack = inventory.getItem(removal.slot());
+                if (!providers.matches(stack, removal.spec()) || stack == null || stack.getAmount() < removal.amount())
+                    return result(id, TransactionResult.Status.REJECTED, "inventory-changed", 0);
+            }
+            boolean withdrew = plan.money() > 0 && economy != null && economy.withdraw(player, plan.money());
+            if (plan.money() > 0 && !withdrew) return result(id, TransactionResult.Status.REJECTED, "missing-money", 0);
+            try { inventory.setStorageContents(plan.simulated()); }
+            catch (RuntimeException ex) {
+                inventory.setStorageContents(snapshot);
+                if (withdrew && !economy.deposit(player, plan.money()))
+                    return result(id, TransactionResult.Status.FAILED, "economy-compensation-failed", 0);
+                return result(id, TransactionResult.Status.ROLLED_BACK, "transaction-rolled-back", 0);
+            }
+            return result(id, TransactionResult.Status.SUCCESS, "success", batch);
+        } catch (ArithmeticException | IllegalArgumentException ex) {
+            return result(id, TransactionResult.Status.REJECTED, "invalid-amount", 0);
+        } catch (RuntimeException ex) {
+            return result(id, TransactionResult.Status.FAILED, "transaction-failed", 0);
+        } finally { busy.remove(player.getUniqueId()); }
+    }
+
+    public void release(UUID playerId) { busy.remove(playerId); }
+
+    private int batchUpperBound(Player player, Recipe recipe, ItemStack[] before, int configuredMaximum) {
+        int upper = configuredMaximum;
+        double moneyPerBatch = 0;
+        for (var requirement : recipe.requirements()) {
+            if (requirement.type().equalsIgnoreCase("item")
+                && Boolean.parseBoolean(String.valueOf(requirement.values().getOrDefault("consume", true)))) {
+                ItemSpec spec = ItemSpec.from(requirement.values());
+                var provider = providers.find(spec.provider()).orElse(null);
+                if (provider == null) continue;
+                int found = 0;
+                for (ItemStack stack : before) if (providers.matches(stack, spec)) found = Math.addExact(found, stack.getAmount());
+                upper = Math.min(upper, found / spec.amount());
+            } else if (requirement.type().equalsIgnoreCase("money") || requirement.type().equalsIgnoreCase("currency"))
+                moneyPerBatch += decimal(requirement.values().get("amount"), "amount");
+        }
+        if (moneyPerBatch > 0 && economy != null) {
+            int low = 0, high = upper;
+            while (low < high) {
+                int middle = low + (high - low + 1) / 2;
+                if (economy.has(player, moneyPerBatch * middle)) low = middle; else high = middle - 1;
+            }
+            upper = low;
+        }
+        return upper;
+    }
+
+    private PlanAttempt plan(Player player, Recipe recipe, ItemStack[] before, int batch) {
+        int[] available = new int[before.length];
+        for (int slot = 0; slot < before.length; slot++) available[slot] = before[slot] == null ? 0 : before[slot].getAmount();
+        var removals = new ArrayList<PlannedRemoval>();
+        double money = 0;
+        for (var requirement : recipe.requirements()) {
+            if (requirement.type().equalsIgnoreCase("item")) {
+                ItemSpec spec = ItemSpec.from(requirement.values());
+                var provider = providers.find(spec.provider()).orElse(null);
+                if (provider == null) return failed("provider-unavailable");
+                boolean consume = Boolean.parseBoolean(String.valueOf(requirement.values().getOrDefault("consume", true)));
+                int needed = consume ? Math.multiplyExact(spec.amount(), batch) : spec.amount();
+                int[] source = consume ? available : amounts(before);
+                var itemPlan = InventoryPlanner.plan(source, needed, slot -> providers.matches(before[slot], spec));
+                if (itemPlan.isEmpty()) return failed("missing-items");
+                if (consume) for (var removal : itemPlan) {
+                    available[removal.slot()] -= removal.amount();
+                    removals.add(new PlannedRemoval(removal.slot(), removal.amount(), spec));
+                }
+            } else if (requirement.type().equalsIgnoreCase("money") || requirement.type().equalsIgnoreCase("currency")) {
+                money += decimal(requirement.values().get("amount"), "amount") * batch;
+            }
+        }
+        if (!Double.isFinite(money)) return failed("invalid-money");
+        if (money > 0 && (economy == null || !economy.ready() || !economy.has(player, money))) return failed("missing-money");
+        var totals = new HashMap<Integer, Integer>();
+        for (var removal : removals) totals.merge(removal.slot(), removal.amount(), Math::addExact);
+        var outputs = new ArrayList<ItemStack>();
+        for (var output : recipe.results()) {
+            if (!output.type().equalsIgnoreCase("give-item")) return failed("unsupported-result");
+            ItemSpec base = ItemSpec.from(output.values());
+            var provider = providers.find(base.provider()).orElse(null);
+            if (provider == null) return failed("provider-unavailable");
+            int amount = Math.multiplyExact(base.amount(), batch);
+            outputs.add(provider.create(new ItemSpec(base.provider(), base.id(), base.itemType(), amount)));
+        }
+        var simulated = InventorySimulation.apply(before, totals, outputs);
+        double totalMoney = money;
+        return simulated.<PlanAttempt>map(items -> new PlanAttempt(new Plan(java.util.List.copyOf(removals), items, totalMoney), null))
+            .orElseGet(() -> failed("inventory-full"));
+    }
+
+    private String checkNonItem(Player player, dev.customgui.recipe.RequirementSpec requirement) {
+        var values = requirement.values();
+        return switch (requirement.type().toLowerCase(java.util.Locale.ROOT)) {
+            case "permission" -> player.hasPermission(required(values, "permission")) ? null : "no-permission";
+            case "level" -> player.getLevel() >= integer(values.getOrDefault("amount", values.getOrDefault("min-level", 0)), "level") ? null : "missing-level";
+            case "experience" -> player.getTotalExperience() >= integer(values.get("amount"), "amount") ? null : "missing-experience";
+            case "world" -> player.getWorld().getName().equalsIgnoreCase(required(values, "world")) ? null : "wrong-world";
+            case "game-mode" -> player.getGameMode().name().equalsIgnoreCase(required(values, "game-mode")) ? null : "wrong-game-mode";
+            case "chance" -> java.util.concurrent.ThreadLocalRandom.current().nextDouble() < decimal(values.get("chance"), "chance") ? null : "chance-failed";
+            case "placeholder" -> {
+                if (placeholders == null) yield "provider-unavailable";
+                String actual = placeholders.parse(player, required(values, "placeholder"));
+                yield PlaceholderComparison.test(actual, required(values, "value"), required(values, "operator"),
+                    String.valueOf(values.getOrDefault("value-type", "string"))) ? null : "placeholder-failed";
+            }
+            default -> "unsupported-requirement";
+        };
+    }
+
+    private static boolean isItemOrMoney(String type) {
+        return type.equalsIgnoreCase("item") || type.equalsIgnoreCase("money") || type.equalsIgnoreCase("currency");
+    }
+    private static boolean isCapacityFailure(String key) {
+        return key.equals("missing-items") || key.equals("missing-money") || key.equals("inventory-full");
+    }
+    private static int[] amounts(ItemStack[] stacks) {
+        int[] output = new int[stacks.length];
+        for (int slot = 0; slot < stacks.length; slot++) output[slot] = stacks[slot] == null ? 0 : stacks[slot].getAmount();
+        return output;
+    }
+    private static String required(Map<String, Object> values, String key) {
+        Object value = values.get(key); if (value == null || String.valueOf(value).isBlank()) throw new IllegalArgumentException(key + " is required"); return String.valueOf(value);
+    }
+    private static int integer(Object value, String key) {
+        if (value instanceof Number number) return number.intValue();
+        try { return Integer.parseInt(String.valueOf(value)); } catch (NumberFormatException ex) { throw new IllegalArgumentException(key + " must be an integer"); }
+    }
+    private static double decimal(Object value, String key) {
+        double amount;
+        if (value instanceof Number number) amount = number.doubleValue();
+        else try { amount = Double.parseDouble(String.valueOf(value)); } catch (NumberFormatException ex) { throw new IllegalArgumentException(key + " must be decimal"); }
+        if (!Double.isFinite(amount) || amount <= 0) throw new IllegalArgumentException(key + " must be finite and positive");
+        return amount;
+    }
+    private static PlanAttempt failed(String key) { return new PlanAttempt(null, key); }
+    private static TransactionResult result(UUID id, TransactionResult.Status status, String key, int batch) {
+        return new TransactionResult(id, status, key, batch);
+    }
+    private record PlannedRemoval(int slot, int amount, ItemSpec spec) {}
+    private record Plan(java.util.List<PlannedRemoval> removals, ItemStack[] simulated, double money) {}
+    private record PlanAttempt(Plan plan, String failure) {}
+}

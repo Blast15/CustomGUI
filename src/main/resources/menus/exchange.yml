@@ -1,0 +1,105 @@
+# ============================================================================
+#  MENU RECIPE GỌN - TRẠM TRAO ĐỔI
+# ============================================================================
+id: exchange
+title: "<gradient:#10B981:#22D3EE><bold>⇄ TRẠM TRAO ĐỔI</bold></gradient>"
+rows: 5
+permission: customgui.menu.exchange
+open-commands: [exchange, trade, doido]
+
+recipes:
+  slots: [10-16, 19-25]
+  groups: [exchange]
+  categories: [vanilla]
+  name: "<gradient:#6EE7B7:#67E8F9><bold>%recipe_id%</bold></gradient>"
+  lore:
+    - "<dark_gray>Trao đổi tài nguyên • %recipe_category%</dark_gray>"
+    - ""
+    - "<green>Trái:</green> <white>đổi 1 lần</white>"
+    - "<aqua>Phải:</aqua> <white>đổi số lượng tối đa có thể</white>"
+    - "<yellow>Shift + trái:</yellow> <white>đổi 16 lần</white>"
+  click-actions:
+    left: 1
+    right: all
+    shift-left: 16
+
+items:
+  background:
+    material: BLACK_STAINED_GLASS_PANE
+    name: "<dark_gray> </dark_gray>"
+    slots: [0-44]
+    priority: 1000
+    hide-tooltip: true
+
+  frame:
+    material: CYAN_STAINED_GLASS_PANE
+    name: "<dark_aqua>◆</dark_aqua>"
+    slots: [0-2, 6-8, 9, 17, 18, 26, 27-29, 33-35, 36-44]
+    priority: 900
+    hide-tooltip: true
+
+  title:
+    material: EMERALD
+    name: "<gradient:#34D399:#22D3EE><bold>CHỢ TÀI NGUYÊN</bold></gradient>"
+    lore:
+      - "<gray>Recipe được lọc bằng group <white>exchange</white>.</gray>"
+      - "<gray>Thêm recipe cùng group là menu tự hiển thị.</gray>"
+    slot: 4
+    priority: 1
+    glow: true
+
+  forge:
+    material: ANVIL
+    name: "<gold>⚒ Sang Lò rèn</gold>"
+    lore: ["<gray>Ví dụ liên kết giữa hai GUI.</gray>"]
+    slot: 30
+    priority: 1
+    actions:
+      click: ["[open-menu] upgrades"]
+
+  home:
+    material: NETHER_STAR
+    name: "<aqua>⌂ Trung tâm</aqua>"
+    lore: ["<gray>Quay về dashboard chính.</gray>"]
+    slot: 31
+    priority: 1
+    actions:
+      click: ["[open-menu] showcase"]
+
+  refresh:
+    material: SUNFLOWER
+    name: "<green>⟳ Làm mới</green>"
+    lore: ["<gray>Cập nhật nội dung menu hiện tại.</gray>"]
+    slot: 32
+    priority: 1
+    actions:
+      click: ["[refresh]"]
+
+  back:
+    material: ARROW
+    name: "<yellow>← Quay lại</yellow>"
+    lore: ["<gray>Trở về dashboard.</gray>"]
+    slot: 39
+    priority: 1
+    actions:
+      click: ["[open-menu] showcase"]
+
+  close:
+    material: BARRIER
+    name: "<red><bold>✕ ĐÓNG</bold></red>"
+    slot: 40
+    priority: 1
+    actions:
+      click: ["[close]"]
+
+  help:
+    material: BOOK
+    name: "<yellow>ⓘ Mẹo giao dịch</yellow>"
+    lore:
+      - "<gray>Chuột phải tự tìm batch lớn nhất có thể.</gray>"
+      - "<gray>Nếu túi đầy, nguyên liệu sẽ không bị trừ.</gray>"
+    slot: 41
+    priority: 1
+    actions:
+      click:
+        - "[message] <green>Mẹo:</green> <gray>Chuột phải để đổi tối đa một cách an toàn.</gray>"

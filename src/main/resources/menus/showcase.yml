@@ -1,0 +1,208 @@
+# ============================================================================
+#  CUSTOMGUI - MENU MẪU / TÀI LIỆU YAML TRỰC TIẾP
+# ============================================================================
+# Mở bằng: /gui, /menus hoặc /customgui open showcase
+# Sau khi sửa file: /customgui reload
+#
+# MiniMessage được hỗ trợ trong title, name, lore và [message].
+# Tham khảo màu: <gray>, <#RRGGBB>, <gradient:#RRGGBB:#RRGGBB>...</gradient>
+# PlaceholderAPI cũng hoạt động nếu server đã cài PAPI, ví dụ: %player_name%.
+
+# id phải duy nhất giữa tất cả file trong thư mục menus/.
+id: showcase
+
+# Tiêu đề inventory. Giữ ngắn để không bị cắt trên resource pack/client khác.
+title: "<gradient:#38BDF8:#818CF8><bold>✦ CUSTOMGUI</bold></gradient> <dark_gray>•</dark_gray> <white>Trung tâm</white>"
+
+# rows: 1..6. Slot luôn bắt đầu từ 0; menu 6 hàng có slot 0..53.
+rows: 6
+
+# Người chơi cần quyền này để mở menu. OP có thể bypass bằng
+# customgui.bypass.showcase hoặc customgui.bypass.*
+permission: customgui.menu.showcase
+
+# Mỗi tên tạo một lệnh mở riêng. Chỉ dùng chữ thường, số, _ hoặc -.
+# Dùng [] nếu không muốn đăng ký lệnh riêng.
+open-commands: [gui, menus]
+
+# Menu dashboard này không tự hiển thị recipe, vì vậy không cần recipes.slots.
+# Xem upgrades.yml để học component recipe có phân trang.
+
+items:
+  # Item nền phủ toàn bộ menu. priority càng NHỎ thì càng được ưu tiên khi
+  # nhiều item cùng slot. Các nút bên dưới priority 1 sẽ đè nền priority 1000.
+  background:
+    material: GRAY_STAINED_GLASS_PANE
+    name: "<dark_gray> </dark_gray>"
+    slots: [0-53]
+    priority: 1000
+    hide-tooltip: true
+
+  # Viền trên/dưới tạo chiều sâu. slots nhận số, danh sách và khoảng A-B.
+  accent:
+    material: LIGHT_BLUE_STAINED_GLASS_PANE
+    name: "<aqua>◆</aqua>"
+    slots: [0-2, 6-8, 45-48, 50-53]
+    priority: 900
+    hide-tooltip: true
+
+  brand:
+    material: NETHER_STAR
+    name: "<gradient:#38BDF8:#A78BFA><bold>CUSTOMGUI CONTROL CENTER</bold></gradient>"
+    lore:
+      - "<gray>Một dashboard gọn, rõ và không làm người chơi bị ngợp.</gray>"
+      - ""
+      - "<dark_gray>•</dark_gray> <white>Chế tạo an toàn, giao dịch nguyên tử</white>"
+      - "<dark_gray>•</dark_gray> <white>Điều hướng nhiều GUI liên kết</white>"
+      - "<dark_gray>•</dark_gray> <white>Hỗ trợ item tùy chỉnh theo provider</white>"
+    slot: 4
+    priority: 1
+    glow: true
+    item-flags: [HIDE_ATTRIBUTES, HIDE_ENCHANTS]
+
+  profile:
+    material: PLAYER_HEAD
+    name: "<yellow>Xin chào, nhà thám hiểm!</yellow>"
+    lore:
+      - "<gray>Hãy chọn một khu vực ở phía dưới.</gray>"
+      - "<dark_gray>Cài PlaceholderAPI để dùng %player_name% và placeholder khác.</dark_gray>"
+    slot: 13
+    priority: 1
+
+  forge:
+    material: ANVIL
+    name: "<gradient:#F59E0B:#FDE68A><bold>⚒ LÒ RÈN</bold></gradient>"
+    lore:
+      - "<gray>Nâng cấp và chế tạo vật phẩm giá trị.</gray>"
+      - ""
+      - "<green>▶ Nhấn để mở</green>"
+      - "<dark_gray>Lệnh nhanh: /forge</dark_gray>"
+    slot: 20
+    priority: 1
+    glow: true
+    actions:
+      click:
+        - "[open-menu] upgrades"
+
+  exchange:
+    material: EMERALD
+    name: "<gradient:#34D399:#22D3EE><bold>⇄ TRẠM TRAO ĐỔI</bold></gradient>"
+    lore:
+      - "<gray>Đổi tài nguyên nhanh với nhiều chế độ số lượng.</gray>"
+      - ""
+      - "<green>▶ Nhấn để mở</green>"
+      - "<dark_gray>Lệnh nhanh: /exchange</dark_gray>"
+    slot: 24
+    priority: 1
+    actions:
+      click: ["[open-menu] exchange"]
+
+  guide:
+    material: KNOWLEDGE_BOOK
+    name: "<aqua><bold>ⓘ CÁCH SỬ DỤNG</bold></aqua>"
+    lore:
+      - "<white>Chuột trái:</white> xem hướng dẫn nhanh"
+      - "<white>Chuột phải:</white> xem quy tắc an toàn"
+      - ""
+      - "<dark_gray>Mỗi loại click có thể có action riêng.</dark_gray>"
+    slot: 31
+    priority: 1
+    actions:
+      left:
+        - "[message] <aqua>Trái</aqua><gray>: đổi 1 • </gray><aqua>Phải</aqua><gray>: đổi tối đa • </gray><aqua>Shift</aqua><gray>: đổi nhanh.</gray>"
+      right:
+        - "[message] <green>Giao dịch được kiểm tra nguyên liệu và chỗ trống trước khi commit.</green>"
+
+  refresh:
+    material: LIME_DYE
+    name: "<green>⟳ Làm mới</green>"
+    lore: ["<gray>Render lại menu và placeholder hiện tại.</gray>"]
+    slot: 46
+    priority: 1
+    actions:
+      click: ["[refresh]"]
+
+  commands:
+    material: COMMAND_BLOCK
+    name: "<yellow>⌨ Lệnh hữu ích</yellow>"
+    lore:
+      - "<white>/gui</white> <dark_gray>•</dark_gray> <white>/forge</white> <dark_gray>•</dark_gray> <white>/exchange</white>"
+      - "<white>/customgui editor</white> <dark_gray>• dành cho quản trị viên</dark_gray>"
+    slot: 48
+    priority: 1
+    actions:
+      click:
+        - "[message] <yellow>/gui</yellow><gray> • </gray><yellow>/forge</yellow><gray> • </gray><yellow>/exchange</yellow>"
+
+  close:
+    material: BARRIER
+    name: "<red><bold>✕ ĐÓNG MENU</bold></red>"
+    lore: ["<gray>Hẹn gặp lại!</gray>"]
+    slot: 49
+    priority: 1
+    actions:
+      click: ["[close]"]
+
+  # Chỉ admin có customgui.editor mới nhìn thấy nút này.
+  # click-permissions kiểm tra quyền lần nữa khi click, chống cấu hình nhầm.
+  editor:
+    material: WRITABLE_BOOK
+    name: "<light_purple>✎ Mở Visual Editor</light_purple>"
+    lore:
+      - "<gray>Chỉnh menu, item, recipe và config ngay trong game.</gray>"
+      - "<yellow>Chỉ dành cho quản trị viên.</yellow>"
+    slot: 50
+    priority: 1
+    view-permission: customgui.editor
+    click-permissions:
+      click: customgui.editor
+    actions:
+      click: ["[player] customgui editor"]
+
+  status:
+    material: CLOCK
+    name: "<aqua>● Hệ thống sẵn sàng</aqua>"
+    lore:
+      - "<gray>Nhấn để làm mới trạng thái hiển thị.</gray>"
+      - "<dark_gray>Static placeholder có sẵn: %item_id%</dark_gray>"
+    slot: 52
+    priority: 1
+    actions:
+      click: ["[refresh]"]
+
+# ----------------------------------------------------------------------------
+# MẪU CUSTOM ITEM - bỏ dấu # và đổi ID đúng plugin đang dùng:
+# ----------------------------------------------------------------------------
+# items:
+#   ia_icon:
+#     provider: itemsadder       # itemsadder | oraxen | nexo | ecoitems
+#     id: "namespace:item_id"
+#     name: "<gold>Custom icon</gold>"
+#     slot: 22
+#
+#   modern_item:
+#     provider: slimefun         # slimefun | executableitems | mythicmobs
+#     id: MY_CUSTOM_ITEM         # mythiccrucible dùng cùng Mythic item ID
+#     slot: 22
+#
+#   nova_item:
+#     provider: nova
+#     id: "machines:star_shard" # Nova dùng namespace:id
+#     slot: 22
+#
+#   captured_item:
+#     provider: template         # tạo bằng /customgui capture <id>
+#     id: ruby_sword
+#     slot: 22
+#
+#   mmoitems_icon:
+#     provider: mmoitems
+#     item-type: SWORD           # Type MMOItems
+#     id: EXCALIBUR              # ID MMOItems
+#     name: "<gold>Excalibur</gold>"
+#     slot: 22
+#
+# Action hợp lệ: [close], [refresh], [next-page], [previous-page],
+# [open-menu] id [page], [recipe] id <số|all>, [message] nội_dung,
+# [player] command và [console] command.
+# CẢNH BÁO: chỉ quản trị viên đáng tin cậy được sửa action [console].

@@ -1,0 +1,121 @@
+# ============================================================================
+#  MENU RECIPE CÓ PHÂN TRANG - LÒ RÈN
+# ============================================================================
+# Mở bằng /forge, /upgrades hoặc từ showcase.yml.
+
+id: upgrades
+title: "<gradient:#F97316:#FACC15><bold>⚒ LÒ RÈN HOÀNG GIA</bold></gradient>"
+rows: 6
+permission: customgui.menu.upgrades
+open-commands: [upgrades, forge, nangcap]
+
+# Component recipe tự lấy các recipe phù hợp và đặt vào slots theo thứ tự.
+recipes:
+  # 21 ô/trang. Khi có hơn 21 recipe, nút next/previous đổi trang.
+  slots: [10-16, 19-25, 28-34]
+
+  # Recipe chỉ cần khớp MỘT trong các group được liệt kê.
+  # categories là bộ lọc thứ hai; bỏ hoặc dùng [] để nhận mọi category.
+  groups: [forge]
+  categories: [vanilla]
+
+  # Icon preview lấy từ kết quả give-item đầu tiên của recipe.
+  # Placeholder tích hợp: %recipe_id%, %recipe_group%, %recipe_category%.
+  name: "<gradient:#FDE68A:#F59E0B><bold>%recipe_id%</bold></gradient>"
+  lore:
+    - "<dark_gray>Danh mục: %recipe_category%</dark_gray>"
+    - ""
+    - "<green>Chuột trái</green> <gray>• chế tạo 1 lần</gray>"
+    - "<aqua>Chuột phải</aqua> <gray>• chế tạo tối đa</gray>"
+    - "<yellow>Shift + trái</yellow> <gray>• chế tạo 16 lần</gray>"
+    - "<gold>Shift + phải</gold> <gray>• chế tạo 64 lần</gray>"
+    - ""
+    - "<dark_gray>Mọi giao dịch đều atomic, không mất đồ một phần.</dark_gray>"
+  click-actions:
+    left: 1
+    right: all
+    shift-left: 16
+    shift-right: 64
+
+items:
+  # Nền và viền có priority cao; nút có priority thấp sẽ hiển thị phía trên.
+  background:
+    material: BLACK_STAINED_GLASS_PANE
+    name: "<dark_gray> </dark_gray>"
+    slots: [0-53]
+    priority: 1000
+    hide-tooltip: true
+
+  frame:
+    material: ORANGE_STAINED_GLASS_PANE
+    name: "<gold>◆</gold>"
+    slots: [0-2, 6-8, 9, 17, 18, 26, 27, 35, 36-39, 41-44, 45-53]
+    priority: 900
+    hide-tooltip: true
+
+  title:
+    material: ANVIL
+    name: "<gradient:#FB923C:#FDE047><bold>VẬT PHẨM CÓ THỂ CHẾ TẠO</bold></gradient>"
+    lore:
+      - "<gray>Chọn công thức và số lượng bằng loại click.</gray>"
+      - "<dark_gray>Trang tự động xuất hiện khi recipe vượt số ô nội dung.</dark_gray>"
+    slot: 4
+    priority: 1
+    glow: true
+
+  home:
+    material: NETHER_STAR
+    name: "<aqua>⌂ Trung tâm</aqua>"
+    lore: ["<gray>Quay về dashboard chính.</gray>"]
+    slot: 40
+    priority: 1
+    actions:
+      click: ["[open-menu] showcase"]
+
+  exchange:
+    material: EMERALD
+    name: "<green>⇄ Trạm trao đổi</green>"
+    lore: ["<gray>Chuyển sang khu vực trao đổi tài nguyên.</gray>"]
+    slot: 43
+    priority: 1
+    actions:
+      click: ["[open-menu] exchange"]
+
+  help:
+    material: BOOK
+    name: "<yellow>ⓘ Điều khiển</yellow>"
+    lore:
+      - "<green>Trái: 1</green> <dark_gray>│</dark_gray> <aqua>Phải: tối đa</aqua>"
+      - "<yellow>Shift trái: 16</yellow> <dark_gray>│</dark_gray> <gold>Shift phải: 64</gold>"
+    slot: 37
+    priority: 1
+    actions:
+      click:
+        - "[message] <gold>Lò rèn:</gold> <gray>trái 1 • phải tối đa • shift 16/64.</gray>"
+
+  previous:
+    material: SPECTRAL_ARROW
+    name: "<yellow>← TRANG TRƯỚC</yellow>"
+    lore: ["<gray>Không có trang trước thì menu giữ nguyên.</gray>"]
+    slot: 47
+    priority: 1
+    actions:
+      click: ["[previous-page]"]
+
+  close:
+    material: BARRIER
+    name: "<red><bold>✕ ĐÓNG</bold></red>"
+    slot: 49
+    priority: 1
+    actions:
+      click: ["[close]"]
+
+  next:
+    material: SPECTRAL_ARROW
+    name: "<yellow>TRANG SAU →</yellow>"
+    lore: ["<gray>Không có trang sau thì menu giữ nguyên.</gray>"]
+    slot: 51
+    priority: 1
+    actions:
+      click: ["[next-page]"]
+
