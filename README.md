@@ -1,6 +1,6 @@
 # CustomGUI
 
-CustomGUI is a YAML-driven Paper menu and atomic recipe/exchange engine. It does not define a custom-item system: vanilla Minecraft or the configured provider remains the source of truth for every item.
+CustomGUI is a YAML-driven Paper menu and transaction-safe recipe/exchange engine. It does not define a custom-item system: vanilla Minecraft or the configured provider remains the source of truth for every item.
 
 ## Requirements and installation
 
@@ -27,7 +27,7 @@ Existing 0.1 menus remain valid. A legacy menu automatically receives close/prev
 | `/upgrades`, `/forge`, `/nangcap` | `customgui.menu.upgrades` | Open the example forge |
 | `/exchange`, `/trade`, `/doido` | `customgui.menu.exchange` | Open the example exchange |
 
-Each menu can register any unique one-word commands with `open-commands`. Use `open-commands: []` to disable them. Command conflicts are reported and retain a namespaced `/customgui:<command>` fallback.
+Each menu can register any unique one-word commands with `open-commands`. Use `open-commands: []` to disable them. A conflict rejects startup/reload so the active command set is never partially replaced.
 
 The bundled example is a three-menu flow: `showcase.yml` is the dashboard, `upgrades.yml` demonstrates filtered recipes and pagination, and `exchange.yml` demonstrates a compact transaction menu. The YAML files are intentionally annotated as copyable documentation, including slot ranges, priorities, click variants, permissions, MiniMessage, custom-item providers, recipe requirements, and safe action usage.
 
@@ -47,7 +47,7 @@ Saving performs these steps as one guarded workflow:
 1. Reject if another admin or external process changed the source file after the draft opened.
 2. Store a timestamped copy under `plugins/CustomGUI/backups/editor/`.
 3. Write UTF-8 through a same-directory temporary file and atomic move when the filesystem supports it.
-4. Validate every config/menu/recipe and refresh dynamic commands/providers.
+4. Validate every config/menu/recipe and prepare the complete dynamic command replacement.
 5. Publish the new snapshot only on success; otherwise restore the previous file and reload it.
 
 The editor intentionally rewrites the selected YAML file through Bukkit's serializer, so comments and hand formatting may be normalized. The untouched backup preserves the exact previous file.
@@ -135,8 +135,9 @@ Actions can be assigned to `click`, `left`, `right`, `shift-left`, `shift-right`
 - `all` finds the largest affordable batch up to the configured cap.
 - All consumed requirements share one virtual inventory plan; one stack cannot pay twice.
 - Non-consumed tool/key requirements remain base-sized rather than multiplying with the batch.
-- Inputs, money, output construction, partial-stack merging, and capacity are validated before one commit.
-- Failure never leaves a partial batch. Vault compensation is attempted if an inventory commit fails after withdrawal.
+- Inputs, money, output construction, partial-stack merging, and capacity are validated before one inventory commit.
+- The complete storage inventory is revalidated after external economy callbacks; conflicts never overwrite newer state.
+- If inventory commit fails after withdrawal, inventory restoration and Vault refund are attempted independently. A failed or ambiguous compensation is logged with a transaction ID for manual reconciliation; Vault cannot provide distributed ACID guarantees.
 
 The default `max-batch-size` is 256 and may be configured from 1 to 4096. Keep it near realistic inventory limits when using costly third-party item identity APIs.
 
@@ -193,4 +194,4 @@ Templates are stored in `plugins/CustomGUI/item-templates.yml` through an atomic
 
 ## Building
 
-Run `gradlew.bat clean test build` on Windows. Output is written to `build/libs/`.
+Run `gradlew.bat clean build` on Windows. Output is written to `build/libs/`.

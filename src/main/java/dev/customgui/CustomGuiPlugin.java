@@ -3,6 +3,7 @@ package dev.customgui;
 import dev.customgui.config.ConfigLoader;
 import dev.customgui.config.ConfigSnapshot;
 import dev.customgui.config.MessageService;
+import dev.customgui.config.ReloadCoordinator;
 import dev.customgui.event.GuiListener;
 import dev.customgui.gui.GuiService;
 import dev.customgui.gui.SessionRegistry;
@@ -40,6 +41,7 @@ public final class CustomGuiPlugin extends JavaPlugin {
     private MenuCommandRegistry menuCommands;
     private EditorService editor;
     private TemplateItemProvider templates;
+    private ReloadCoordinator reloads;
 
     @Override public void onEnable() {
         saveDefaults();
@@ -50,13 +52,17 @@ public final class CustomGuiPlugin extends JavaPlugin {
         templates = new TemplateItemProvider(getDataFolder().toPath());
         providers.register(templates);
         registerExternalProviders();
+        try { providers.validate(snapshot.get()); }
+        catch (RuntimeException ex) { getLogger().severe("Configured item provider validation failed: " + ex.getMessage()); getServer().getPluginManager().disablePlugin(this); return; }
         var placeholderBridge = PlaceholderBridge.discover(getServer());
         transactions = new PlayerTransactionExecutor(providers, EconomyBridge.discover(getServer()), placeholderBridge,
-            () -> snapshot.get().maxBatchSize());
+            () -> snapshot.get().maxBatchSize(), message -> getLogger().severe(message));
         messages = new MessageService(snapshot::get);
         gui = new GuiService(snapshot::get, sessions, providers, transactions, placeholderBridge, messages);
         menuCommands = new MenuCommandRegistry(getServer(), snapshot::get, gui);
-        warnCommandConflicts(menuCommands.replace());
+        try { menuCommands.commit(menuCommands.plan(snapshot.get())); }
+        catch (RuntimeException ex) { getLogger().severe("Command registration failed: " + ex.getMessage()); getServer().getPluginManager().disablePlugin(this); return; }
+        reloads = new ReloadCoordinator(getDataFolder(), snapshot, menuCommands, sessions, providers, message -> getLogger().severe(message));
         editor = new EditorService(this, snapshot::get, this::reloadSnapshot);
         getServer().getServicesManager().register(CustomGuiApi.class, new CustomGuiApiImpl(providers, snapshot::get, gui), this,
             org.bukkit.plugin.ServicePriority.Normal);
@@ -68,6 +74,7 @@ public final class CustomGuiPlugin extends JavaPlugin {
     }
 
     @Override public void onDisable() {
+        if (transactions != null) transactions.shutdown();
         sessions.invalidateAll();
         if (editor != null) editor.shutdown();
         if (menuCommands != null) menuCommands.clear();
@@ -143,7 +150,10 @@ public final class CustomGuiPlugin extends JavaPlugin {
 
     @Override public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command,
                                                 @NotNull String alias, @NotNull String[] args) {
-        if (args.length == 1) return List.of("open", "editor", "capture", "list", "info", "providers", "reload", "help").stream().filter(s -> s.startsWith(args[0].toLowerCase())).toList();
+        if (args.length == 1) return List.of("open", "editor", "capture", "list", "info", "providers", "reload", "help").stream()
+            .filter(s -> !s.equals("editor") || sender.hasPermission("customgui.editor"))
+            .filter(s -> !List.of("capture", "providers", "reload").contains(s) || sender.hasPermission("customgui.admin"))
+            .filter(s -> s.startsWith(args[0].toLowerCase(java.util.Locale.ROOT))).toList();
         if (args.length == 3 && args[0].equalsIgnoreCase("capture")) return List.of("replace").stream().filter(s -> s.startsWith(args[2].toLowerCase())).toList();
         if (args.length == 2 && args[0].equalsIgnoreCase("open")) return snapshot.get().menus().keySet().stream().filter(s -> s.startsWith(args[1])).sorted().toList();
         if (args.length == 3 && args[0].equalsIgnoreCase("open") && sender.hasPermission("customgui.open.others"))
@@ -153,17 +163,11 @@ public final class CustomGuiPlugin extends JavaPlugin {
 
     private boolean denied(CommandSender sender) { sender.sendMessage(messages.render("no-permission")); return true; }
 
-    private void warnCommandConflicts(List<String> conflicts) {
-        if (!conflicts.isEmpty()) getLogger().warning("Menu command conflicts (fallback /customgui:<command> remains available): " + conflicts);
-    }
-
     private String reloadSnapshot() {
-        try {
-            long revision = snapshot.get().revision() + 1;
-            var replacement = new ConfigLoader().load(getDataFolder(), revision);
-            providers.refreshAll(); snapshot.set(replacement); sessions.invalidateAll(); warnCommandConflicts(menuCommands.replace());
-            return null;
-        } catch (RuntimeException ex) { return ex.getMessage(); }
+        var result = reloads.reload();
+        if (result.success()) getLogger().info("Reloaded " + result.snapshot().menus().size() + " menus and "
+            + result.snapshot().recipes().all().size() + " recipes at revision " + result.snapshot().revision());
+        return result.error();
     }
 
     private void registerExternalProviders() {

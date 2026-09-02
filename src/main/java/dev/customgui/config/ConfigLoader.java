@@ -17,14 +17,21 @@ import org.bukkit.configuration.InvalidConfigurationException;
 import java.io.IOException;
 
 public final class ConfigLoader {
+    private static final int MAX_MENUS = 512;
+    private static final int MAX_RECIPES = 10_000;
+    private static final int MAX_ITEMS_PER_MENU = 256;
+    private static final int MAX_TEXT_LENGTH = 4_096;
+
     public ConfigSnapshot load(File dataFolder, long revision) {
         var config = strictLoad(new File(dataFolder, "config.yml"));
-        if (config.getInt("config-version", -1) < 1) throw new IllegalArgumentException("config.yml: unsupported config-version");
+        if (config.getInt("config-version", -1) != 1) throw new IllegalArgumentException("config.yml: unsupported config-version (expected 1)");
         var messages = new LinkedHashMap<String, String>();
         var messageSection = config.getConfigurationSection("messages");
-        if (messageSection != null) for (String key : messageSection.getKeys(false)) messages.put(key, messageSection.getString(key, key));
+        if (messageSection != null) for (String key : messageSection.getKeys(false))
+            messages.put(key, boundedText(messageSection.getString(key, key), "message " + key, new File(dataFolder, "config.yml")));
         var menus = new LinkedHashMap<String, MenuDefinition>();
         loadYamlFiles(new File(dataFolder, "menus")).forEach((file, yaml) -> {
+            if (menus.size() >= MAX_MENUS) throw new IllegalArgumentException("menu count exceeds " + MAX_MENUS);
             String id = required(yaml, "id", file);
             int rows = yaml.getInt("rows", 6);
             int size = rows * 9;
@@ -33,8 +40,8 @@ public final class ConfigLoader {
             Object configuredCommands = yaml.contains("open-commands") ? yaml.get("open-commands")
                 : yaml.contains("open-command") ? yaml.get("open-command")
                 : id.matches("[a-z0-9][a-z0-9_-]{0,31}") ? id : List.of();
-            var menu = new MenuDefinition(id, yaml.getString("title", id), rows,
-                yaml.getString("permission", ""), commandList(configuredCommands, file),
+            var menu = new MenuDefinition(id, boundedText(yaml.getString("title", id), "title", file), rows,
+                permission(yaml.getString("permission", ""), file), commandList(configuredCommands, file),
                 contentSlots, lowerList(yaml.getStringList("recipes.groups")), lowerList(yaml.getStringList("recipes.categories")),
                 recipeActions(yaml.getConfigurationSection("recipes.click-actions"), file),
                 yaml.getString("recipes.name", "<yellow>%recipe_id%</yellow>"), yaml.getStringList("recipes.lore"),
@@ -52,7 +59,9 @@ public final class ConfigLoader {
         loadYamlFiles(new File(dataFolder, "recipes")).forEach((file, yaml) -> {
             var root = yaml.getConfigurationSection("recipes");
             if (root == null) throw new IllegalArgumentException(file + ": recipes section is required");
+            if (root.getKeys(false).size() > MAX_RECIPES) throw new IllegalArgumentException(file + ": recipe count exceeds " + MAX_RECIPES);
             for (String id : root.getKeys(false)) try {
+                if (recipes.size() >= MAX_RECIPES) throw new IllegalArgumentException("total recipe count exceeds " + MAX_RECIPES);
                 var parsed = recipe(id, root.getConfigurationSection(id), file);
                 if (recipes.putIfAbsent(id, parsed) != null) invalidRecipes.put(file.getName() + ':' + id, "duplicate recipe id");
             } catch (RuntimeException ex) { invalidRecipes.put(file.getName() + ':' + id, ex.getMessage()); }
@@ -87,6 +96,7 @@ public final class ConfigLoader {
         if (root == null) return List.of();
         var output = new ArrayList<MenuItemDefinition>();
         for (String id : root.getKeys(false)) {
+            if (output.size() >= MAX_ITEMS_PER_MENU) throw new IllegalArgumentException(file + ": item count exceeds " + MAX_ITEMS_PER_MENU);
             var item = root.getConfigurationSection(id);
             if (item == null) throw new IllegalArgumentException(file + ": item " + id + " must be a section");
             Object rawSlots = item.get("slots", item.get("slot"));
@@ -98,9 +108,11 @@ public final class ConfigLoader {
             var actionSection = item.getConfigurationSection("actions");
             if (actionSection != null) for (String click : actionSection.getKeys(false))
                 actions.put(click, validatedActions(textList(actionSection.get(click)), file, id));
-            output.add(new MenuItemDefinition(id, dev.customgui.recipe.ItemSpec.from(iconValues), item.getString("name", id),
-                item.getStringList("lore"), SlotParser.parse(rawSlots, size), item.getInt("priority", 0),
-                item.getString("view-permission", ""), stringMap(item.getConfigurationSection("click-permissions")), actions,
+            var lore = item.getStringList("lore");
+            lore.forEach(line -> boundedText(line, "lore", file));
+            output.add(new MenuItemDefinition(id, dev.customgui.recipe.ItemSpec.from(iconValues), boundedText(item.getString("name", id), "name", file),
+                lore, SlotParser.parse(rawSlots, size), item.getInt("priority", 0),
+                permission(item.getString("view-permission", ""), file), stringMap(item.getConfigurationSection("click-permissions")), actions,
                 item.getBoolean("glow", false), item.contains("custom-model-data") ? item.getInt("custom-model-data") : null,
                 item.getBoolean("hide-tooltip", false), item.getStringList("item-flags")));
         }
@@ -143,7 +155,10 @@ public final class ConfigLoader {
     }
 
     private static List<String> validatedActions(List<String> actions, File file, String item) {
-        for (String action : actions) try { dev.customgui.gui.MenuAction.parse(action); }
+        for (String action : actions) try {
+            if (action.length() > MAX_TEXT_LENGTH) throw new IllegalArgumentException("action exceeds " + MAX_TEXT_LENGTH + " characters");
+            dev.customgui.gui.MenuAction.parse(action);
+        }
         catch (IllegalArgumentException ex) { throw new IllegalArgumentException(file + ": item " + item + ": " + ex.getMessage()); }
         return actions;
     }
@@ -190,6 +205,20 @@ public final class ConfigLoader {
 
     private static int bounded(int value, int min, int max, String key) {
         if (value < min || value > max) throw new IllegalArgumentException(key + " must be " + min + ".." + max);
+        return value;
+    }
+
+    private static String boundedText(String value, String key, File file) {
+        if (value == null) return "";
+        if (value.length() > MAX_TEXT_LENGTH) throw new IllegalArgumentException(file + ": " + key + " exceeds " + MAX_TEXT_LENGTH + " characters");
+        try { net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize(value); }
+        catch (RuntimeException ex) { throw new IllegalArgumentException(file + ": invalid MiniMessage in " + key, ex); }
+        return value;
+    }
+
+    private static String permission(String value, File file) {
+        if (value == null || value.isBlank()) return "";
+        if (!value.matches("[A-Za-z0-9_*.-]{1,128}")) throw new IllegalArgumentException(file + ": invalid permission " + value);
         return value;
     }
 

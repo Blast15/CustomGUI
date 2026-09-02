@@ -12,6 +12,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.IntSupplier;
+import java.util.function.Consumer;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -21,11 +22,19 @@ public final class PlayerTransactionExecutor {
     private final EconomyBridge economy;
     private final PlaceholderBridge placeholders;
     private final IntSupplier maxBatchSize;
+    private final Consumer<String> severe;
     private final HashSet<UUID> busy = new HashSet<>();
+    private boolean accepting = true;
 
     public PlayerTransactionExecutor(ItemProviderRegistry providers, EconomyBridge economy, PlaceholderBridge placeholders,
                                      IntSupplier maxBatchSize) {
-        this.providers = providers; this.economy = economy; this.placeholders = placeholders; this.maxBatchSize = maxBatchSize;
+        this(providers, economy, placeholders, maxBatchSize, message -> Bukkit.getLogger().severe(message));
+    }
+
+    public PlayerTransactionExecutor(ItemProviderRegistry providers, EconomyBridge economy, PlaceholderBridge placeholders,
+                                     IntSupplier maxBatchSize, Consumer<String> severe) {
+        this.providers = providers; this.economy = economy; this.placeholders = placeholders;
+        this.maxBatchSize = maxBatchSize; this.severe = severe;
     }
 
     public TransactionResult execute(Player player, Recipe recipe) { return execute(player, recipe, 1); }
@@ -34,6 +43,7 @@ public final class PlayerTransactionExecutor {
     public TransactionResult execute(Player player, Recipe recipe, int requestedBatch) {
         UUID id = UUID.randomUUID();
         if (!Bukkit.isPrimaryThread()) return result(id, TransactionResult.Status.FAILED, "transaction-wrong-thread", 0);
+        if (!accepting) return result(id, TransactionResult.Status.FAILED, "plugin-disabled", 0);
         if (requestedBatch < 0 || requestedBatch > maxBatchSize.getAsInt()) return result(id, TransactionResult.Status.REJECTED, "invalid-amount", 0);
         if (!busy.add(player.getUniqueId())) return result(id, TransactionResult.Status.BUSY, "transaction-busy", 0);
         try {
@@ -45,15 +55,15 @@ public final class PlayerTransactionExecutor {
             Plan plan;
             int batch;
             if (requestedBatch == 0) {
-                plan = null; batch = 0; String lastFailure = "nothing-to-exchange";
+                String[] lastFailure = {"nothing-to-exchange"};
                 int upperBound = batchUpperBound(player, recipe, before, maxBatchSize.getAsInt());
-                for (int candidate = upperBound; candidate >= 1; candidate--) {
+                batch = BatchSearch.highestFeasible(upperBound, candidate -> {
                     var attempt = plan(player, recipe, before, candidate);
-                    if (attempt.plan() != null) { plan = attempt.plan(); batch = candidate; break; }
-                    lastFailure = attempt.failure();
-                    if (!isCapacityFailure(lastFailure)) break;
-                }
-                if (plan == null) return result(id, TransactionResult.Status.REJECTED, lastFailure, 0);
+                    if (attempt.plan() == null) lastFailure[0] = attempt.failure();
+                    return attempt.plan() != null;
+                });
+                if (batch == 0) return result(id, TransactionResult.Status.REJECTED, lastFailure[0], 0);
+                plan = plan(player, recipe, before, batch).plan();
             } else {
                 batch = requestedBatch;
                 var attempt = plan(player, recipe, before, batch);
@@ -62,20 +72,28 @@ public final class PlayerTransactionExecutor {
             }
 
             var inventory = player.getInventory();
-            ItemStack[] snapshot = InventorySimulation.cloneContents(inventory.getStorageContents());
-            for (var removal : plan.removals()) {
-                var stack = inventory.getItem(removal.slot());
-                if (!providers.matches(stack, removal.spec()) || stack == null || stack.getAmount() < removal.amount())
-                    return result(id, TransactionResult.Status.REJECTED, "inventory-changed", 0);
+            if (!java.util.Arrays.equals(before, inventory.getStorageContents()))
+                return result(id, TransactionResult.Status.REJECTED, "inventory-changed", 0);
+            var withdrawal = plan.money() == 0 ? EconomyBridge.Outcome.REJECTED : economy.withdraw(player, plan.money());
+            if (plan.money() > 0 && withdrawal == EconomyBridge.Outcome.REJECTED)
+                return result(id, TransactionResult.Status.REJECTED, "missing-money", 0);
+            if (withdrawal == EconomyBridge.Outcome.UNKNOWN) {
+                severe.accept("Transaction " + id + " has ambiguous economy withdrawal; manual reconciliation may be required");
+                return result(id, TransactionResult.Status.FAILED, "economy-ambiguous", 0);
             }
-            boolean withdrew = plan.money() > 0 && economy != null && economy.withdraw(player, plan.money());
-            if (plan.money() > 0 && !withdrew) return result(id, TransactionResult.Status.REJECTED, "missing-money", 0);
-            try { inventory.setStorageContents(plan.simulated()); }
-            catch (RuntimeException ex) {
-                inventory.setStorageContents(snapshot);
-                if (withdrew && !economy.deposit(player, plan.money()))
-                    return result(id, TransactionResult.Status.FAILED, "economy-compensation-failed", 0);
-                return result(id, TransactionResult.Status.ROLLED_BACK, "transaction-rolled-back", 0);
+            boolean withdrew = withdrawal == EconomyBridge.Outcome.SUCCEEDED;
+            if (!java.util.Arrays.equals(before, inventory.getStorageContents())) {
+                CompensationReport report = compensate(inventory, before, false, withdrew, player, plan.money());
+                if (!report.complete()) logCompensationFailure(id, report);
+                return new TransactionResult(id, report.complete() ? TransactionResult.Status.ROLLED_BACK : TransactionResult.Status.FAILED,
+                    report.complete() ? "inventory-changed" : "compensation-failed", 0, report);
+            }
+            try { inventory.setStorageContents(InventorySimulation.cloneContents(plan.simulated())); }
+            catch (RuntimeException | LinkageError ex) {
+                CompensationReport report = compensate(inventory, before, true, withdrew, player, plan.money());
+                if (!report.complete()) logCompensationFailure(id, report);
+                return new TransactionResult(id, report.complete() ? TransactionResult.Status.ROLLED_BACK : TransactionResult.Status.FAILED,
+                    report.complete() ? "transaction-rolled-back" : "compensation-failed", 0, report);
             }
             return result(id, TransactionResult.Status.SUCCESS, "success", batch);
         } catch (ArithmeticException | IllegalArgumentException ex) {
@@ -86,6 +104,22 @@ public final class PlayerTransactionExecutor {
     }
 
     public void release(UUID playerId) { busy.remove(playerId); }
+    public void shutdown() { accepting = false; busy.clear(); }
+
+    private CompensationReport compensate(org.bukkit.inventory.PlayerInventory inventory, ItemStack[] before,
+                                          boolean restoreInventory, boolean refundEconomy, Player player, double money) {
+        return CompensationRunner.run(restoreInventory,
+            () -> inventory.setStorageContents(InventorySimulation.cloneContents(before)), refundEconomy, () -> {
+            var outcome = economy.deposit(player, money);
+            if (outcome != EconomyBridge.Outcome.SUCCEEDED)
+                throw new IllegalStateException("economy refund " + outcome.name().toLowerCase(java.util.Locale.ROOT));
+        });
+    }
+
+    private void logCompensationFailure(UUID id, CompensationReport report) {
+        severe.accept("Transaction " + id + " compensation incomplete (inventory=" + report.inventoryRestored()
+            + ", economy=" + report.economyRestored() + "); manual reconciliation is required");
+    }
 
     private int batchUpperBound(Player player, Recipe recipe, ItemStack[] before, int configuredMaximum) {
         int upper = configuredMaximum;
@@ -147,7 +181,11 @@ public final class PlayerTransactionExecutor {
             var provider = providers.find(base.provider()).orElse(null);
             if (provider == null) return failed("provider-unavailable");
             int amount = Math.multiplyExact(base.amount(), batch);
-            outputs.add(provider.create(new ItemSpec(base.provider(), base.id(), base.itemType(), amount)));
+            ItemSpec requested = new ItemSpec(base.provider(), base.id(), base.itemType(), amount);
+            ItemStack created = provider.create(requested);
+            if (created == null || created.getType().isAir() || created.getAmount() != amount || !providers.matches(created, requested))
+                return failed("provider-invalid-output");
+            outputs.add(created.clone());
         }
         var simulated = InventorySimulation.apply(before, totals, outputs);
         double totalMoney = money;
@@ -176,9 +214,6 @@ public final class PlayerTransactionExecutor {
 
     private static boolean isItemOrMoney(String type) {
         return type.equalsIgnoreCase("item") || type.equalsIgnoreCase("money") || type.equalsIgnoreCase("currency");
-    }
-    private static boolean isCapacityFailure(String key) {
-        return key.equals("missing-items") || key.equals("missing-money") || key.equals("inventory-full");
     }
     private static int[] amounts(ItemStack[] stacks) {
         int[] output = new int[stacks.length];

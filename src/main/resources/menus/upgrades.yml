@@ -30,7 +30,7 @@ recipes:
     - "<yellow>Shift + trái</yellow> <gray>• chế tạo 16 lần</gray>"
     - "<gold>Shift + phải</gold> <gray>• chế tạo 64 lần</gray>"
     - ""
-    - "<dark_gray>Mọi giao dịch đều atomic, không mất đồ một phần.</dark_gray>"
+    - "<dark_gray>Nếu có lỗi, giao dịch sẽ dừng và cố gắng hoàn lại.</dark_gray>"
   click-actions:
     left: 1
     right: all
@@ -58,7 +58,7 @@ items:
     name: "<gradient:#FB923C:#FDE047><bold>VẬT PHẨM CÓ THỂ CHẾ TẠO</bold></gradient>"
     lore:
       - "<gray>Chọn công thức và số lượng bằng loại click.</gray>"
-      - "<dark_gray>Trang tự động xuất hiện khi recipe vượt số ô nội dung.</dark_gray>"
+      - "<dark_gray>Dùng nút mũi tên để chuyển trang.</dark_gray>"
     slot: 4
     priority: 1
     glow: true

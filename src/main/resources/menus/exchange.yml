@@ -42,8 +42,8 @@ items:
     material: EMERALD
     name: "<gradient:#34D399:#22D3EE><bold>CHỢ TÀI NGUYÊN</bold></gradient>"
     lore:
-      - "<gray>Recipe được lọc bằng group <white>exchange</white>.</gray>"
-      - "<gray>Thêm recipe cùng group là menu tự hiển thị.</gray>"
+      - "<gray>Đổi nguyên liệu của bạn thành phần thưởng hữu ích.</gray>"
+      - "<gray>Chọn một món bên dưới để bắt đầu.</gray>"
     slot: 4
     priority: 1
     glow: true
@@ -51,7 +51,7 @@ items:
   forge:
     material: ANVIL
     name: "<gold>⚒ Sang Lò rèn</gold>"
-    lore: ["<gray>Ví dụ liên kết giữa hai GUI.</gray>"]
+    lore: ["<gray>Chế tạo và nâng cấp vật phẩm.</gray>"]
     slot: 30
     priority: 1
     actions:
@@ -96,7 +96,7 @@ items:
     material: BOOK
     name: "<yellow>ⓘ Mẹo giao dịch</yellow>"
     lore:
-      - "<gray>Chuột phải tự tìm batch lớn nhất có thể.</gray>"
+      - "<gray>Chuột phải tự chọn số lần đổi lớn nhất có thể.</gray>"
       - "<gray>Nếu túi đầy, nguyên liệu sẽ không bị trừ.</gray>"
     slot: 41
     priority: 1

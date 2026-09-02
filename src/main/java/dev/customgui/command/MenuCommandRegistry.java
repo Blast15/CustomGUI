@@ -2,10 +2,10 @@ package dev.customgui.command;
 
 import dev.customgui.config.ConfigSnapshot;
 import dev.customgui.gui.GuiService;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.function.Supplier;
 import org.bukkit.Server;
 import org.bukkit.command.Command;
@@ -18,40 +18,70 @@ public final class MenuCommandRegistry {
     private final CommandMap commandMap;
     private final Supplier<ConfigSnapshot> snapshot;
     private final GuiService gui;
-    private final java.util.Map<String, MenuCommand> registered = new LinkedHashMap<>();
+    private Map<String, MenuCommand> registered = Map.of();
 
     public MenuCommandRegistry(Server server, Supplier<ConfigSnapshot> snapshot, GuiService gui) {
         this.commandMap = server.getCommandMap(); this.snapshot = snapshot; this.gui = gui;
     }
 
-    public List<String> replace() {
+    public CommandReplacementPlan plan(ConfigSnapshot candidate) {
         var desired = new LinkedHashMap<String, String>();
-        for (var menu : snapshot.get().menus().values()) for (String label : menu.openCommands()) desired.put(label, menu.id());
-        for (String removed : registered.keySet().stream().filter(label -> !desired.containsKey(label)).toList())
-            registered.remove(removed).unregister(commandMap);
-        var conflicts = new ArrayList<String>();
-        for (var entry : desired.entrySet()) {
-            var existing = registered.get(entry.getKey());
-            if (existing != null) { existing.menuId = entry.getValue(); continue; }
-            var command = new MenuCommand(entry.getKey(), entry.getValue());
-            commandMap.register("customgui", command);
-            registered.put(entry.getKey(), command);
-            if (commandMap.getCommand(entry.getKey()) != command) conflicts.add(entry.getKey());
+        for (var menu : candidate.menus().values()) for (String label : menu.openCommands()) {
+            if (!label.matches("[a-z0-9][a-z0-9_-]{0,31}")) throw new IllegalArgumentException("invalid command label: " + label);
+            String previous = desired.putIfAbsent(label, menu.id());
+            if (previous != null) throw new IllegalArgumentException("duplicate command label " + label);
+            Command occupying = commandMap.getCommand(label);
+            if (occupying != null && occupying != registered.get(label))
+                throw new IllegalArgumentException("command label is already registered: " + label);
         }
-        return conflicts;
+        return new CommandReplacementPlan(Map.copyOf(desired));
     }
 
-    public void clear() { registered.values().forEach(command -> command.unregister(commandMap)); registered.clear(); }
+    public void commit(CommandReplacementPlan plan) {
+        Map<String, MenuCommand> previous = registered;
+        var replacement = new LinkedHashMap<String, MenuCommand>();
+        try {
+            previous.values().forEach(this::unregister);
+            for (var entry : plan.commands().entrySet()) {
+                var command = new MenuCommand(entry.getKey(), entry.getValue());
+                if (!commandMap.register("customgui", command) || commandMap.getCommand(entry.getKey()) != command)
+                    throw new IllegalStateException("could not register command " + entry.getKey());
+                replacement.put(entry.getKey(), command);
+            }
+            registered = Map.copyOf(replacement);
+        } catch (RuntimeException | LinkageError failure) {
+            replacement.values().forEach(this::unregister);
+            var rollbackFailures = new java.util.ArrayList<String>();
+            for (var entry : previous.entrySet())
+                if (!commandMap.register("customgui", entry.getValue()) || commandMap.getCommand(entry.getKey()) != entry.getValue())
+                    rollbackFailures.add(entry.getKey());
+            registered = previous;
+            if (!rollbackFailures.isEmpty()) throw new IllegalStateException("command rollback failed: " + rollbackFailures, failure);
+            throw failure;
+        }
+    }
+
+    public List<String> replace() { commit(plan(snapshot.get())); return List.of(); }
+    public void clear() { registered.values().forEach(this::unregister); registered = Map.of(); }
+
+    private void unregister(MenuCommand command) {
+        command.unregister(commandMap);
+        commandMap.getKnownCommands().entrySet().removeIf(entry -> entry.getValue() == command);
+    }
+
+    public record CommandReplacementPlan(Map<String, String> commands) {
+        public CommandReplacementPlan { commands = Map.copyOf(commands); }
+    }
 
     private final class MenuCommand extends Command {
-        private String menuId;
+        private final String menuId;
         private MenuCommand(String name, String menuId) { super(name); this.menuId = menuId; setDescription("Open CustomGUI menu " + menuId); }
 
         @Override public boolean execute(@NotNull CommandSender sender, @NotNull String commandLabel, @NotNull String[] args) {
             if (!(sender instanceof Player player)) { sender.sendMessage("This menu command can only be used by a player."); return true; }
             int page = 0;
             if (args.length > 0) try { page = Math.max(0, Integer.parseInt(args[0]) - 1); }
-            catch (NumberFormatException ignored) { /* menu commands accept an optional page only */ }
+            catch (NumberFormatException ignored) { /* optional page */ }
             gui.open(player, menuId, page);
             return true;
         }

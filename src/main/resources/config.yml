@@ -41,3 +41,7 @@ messages:
   unsupported-result: "<red>Recipe có result chưa được hỗ trợ.</red>"
   transaction-wrong-thread: "<red>Giao dịch bị từ chối vì sai execution context.</red>"
   economy-compensation-failed: "<dark_red>Hoàn tiền thất bại; hãy báo quản trị viên mã %transaction_id%.</dark_red>"
+  compensation-failed: "<dark_red>Không thể hoàn tác đầy đủ. Hãy báo quản trị viên mã %transaction_id% để đối soát.</dark_red>"
+  economy-ambiguous: "<dark_red>Không xác định được trạng thái thanh toán. Hãy báo quản trị viên mã %transaction_id%.</dark_red>"
+  provider-invalid-output: "<red>Nhà cung cấp vật phẩm trả về kết quả không hợp lệ.</red>"
+  plugin-disabled: "<red>CustomGUI đang dừng và không nhận giao dịch mới.</red>"

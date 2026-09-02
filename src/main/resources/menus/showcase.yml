@@ -48,13 +48,12 @@ items:
 
   brand:
     material: NETHER_STAR
-    name: "<gradient:#38BDF8:#A78BFA><bold>CUSTOMGUI CONTROL CENTER</bold></gradient>"
+    name: "<gradient:#38BDF8:#A78BFA><bold>TRUNG TÂM MÁY CHỦ</bold></gradient>"
     lore:
-      - "<gray>Một dashboard gọn, rõ và không làm người chơi bị ngợp.</gray>"
+      - "<gray>Chọn nơi bạn muốn đến.</gray>"
       - ""
-      - "<dark_gray>•</dark_gray> <white>Chế tạo an toàn, giao dịch nguyên tử</white>"
-      - "<dark_gray>•</dark_gray> <white>Điều hướng nhiều GUI liên kết</white>"
-      - "<dark_gray>•</dark_gray> <white>Hỗ trợ item tùy chỉnh theo provider</white>"
+      - "<dark_gray>•</dark_gray> <white>Chế tạo và nâng cấp vật phẩm</white>"
+      - "<dark_gray>•</dark_gray> <white>Trao đổi tài nguyên nhanh chóng</white>"
     slot: 4
     priority: 1
     glow: true
@@ -65,7 +64,6 @@ items:
     name: "<yellow>Xin chào, nhà thám hiểm!</yellow>"
     lore:
       - "<gray>Hãy chọn một khu vực ở phía dưới.</gray>"
-      - "<dark_gray>Cài PlaceholderAPI để dùng %player_name% và placeholder khác.</dark_gray>"
     slot: 13
     priority: 1
 
@@ -104,7 +102,7 @@ items:
       - "<white>Chuột trái:</white> xem hướng dẫn nhanh"
       - "<white>Chuột phải:</white> xem quy tắc an toàn"
       - ""
-      - "<dark_gray>Mỗi loại click có thể có action riêng.</dark_gray>"
+      - "<dark_gray>Chọn cách phù hợp với số lượng bạn cần.</dark_gray>"
     slot: 31
     priority: 1
     actions:
@@ -116,7 +114,7 @@ items:
   refresh:
     material: LIME_DYE
     name: "<green>⟳ Làm mới</green>"
-    lore: ["<gray>Render lại menu và placeholder hiện tại.</gray>"]
+    lore: ["<gray>Cập nhật nội dung đang hiển thị.</gray>"]
     slot: 46
     priority: 1
     actions:
@@ -127,7 +125,6 @@ items:
     name: "<yellow>⌨ Lệnh hữu ích</yellow>"
     lore:
       - "<white>/gui</white> <dark_gray>•</dark_gray> <white>/forge</white> <dark_gray>•</dark_gray> <white>/exchange</white>"
-      - "<white>/customgui editor</white> <dark_gray>• dành cho quản trị viên</dark_gray>"
     slot: 48
     priority: 1
     actions:
@@ -164,7 +161,6 @@ items:
     name: "<aqua>● Hệ thống sẵn sàng</aqua>"
     lore:
       - "<gray>Nhấn để làm mới trạng thái hiển thị.</gray>"
-      - "<dark_gray>Static placeholder có sẵn: %item_id%</dark_gray>"
     slot: 52
     priority: 1
     actions:

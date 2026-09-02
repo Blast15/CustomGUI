@@ -28,6 +28,13 @@ class ConfigLoaderTest {
         assertThrows(IllegalArgumentException.class, () -> new ConfigLoader().load(directory.toFile(), 1));
     }
 
+    @Test void rejectsUnknownConfigVersion() throws Exception {
+        write("config.yml", "config-version: 2\n");
+        Files.createDirectories(directory.resolve("menus"));
+        Files.createDirectories(directory.resolve("recipes"));
+        assertThrows(IllegalArgumentException.class, () -> new ConfigLoader().load(directory.toFile(), 2));
+    }
+
     private void write(String relative, String contents) throws Exception {
         Path path = directory.resolve(relative); Files.createDirectories(path.getParent()); Files.writeString(path, contents);
     }

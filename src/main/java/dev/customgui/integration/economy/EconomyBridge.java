@@ -1,48 +1,38 @@
 package dev.customgui.integration.economy;
 
-import java.lang.reflect.Method;
+import net.milkbowl.vault.economy.Economy;
+import net.milkbowl.vault.economy.EconomyResponse;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.Server;
-import org.bukkit.plugin.Plugin;
 
 public final class EconomyBridge {
-    private final Plugin vault;
-    private final Object provider;
-    private final Method has;
-    private final Method withdraw;
-    private final Method deposit;
-    private final Method successful;
+    public enum Outcome { SUCCEEDED, REJECTED, UNKNOWN }
+    private final Economy provider;
 
-    private EconomyBridge(Plugin vault, Object provider, Method has, Method withdraw, Method deposit, Method successful) {
-        this.vault = vault; this.provider = provider; this.has = has; this.withdraw = withdraw; this.deposit = deposit; this.successful = successful;
-    }
+    private EconomyBridge(Economy provider) { this.provider = provider; }
 
     public static EconomyBridge discover(Server server) {
-        Plugin vault = server.getPluginManager().getPlugin("Vault");
+        var vault = server.getPluginManager().getPlugin("Vault");
         if (vault == null || !vault.isEnabled()) return null;
+        var registration = server.getServicesManager().getRegistration(Economy.class);
+        return registration == null ? null : new EconomyBridge(registration.getProvider());
+    }
+
+    public boolean ready() { return provider.isEnabled(); }
+    public boolean has(OfflinePlayer player, double amount) {
+        try { return ready() && provider.has(player, amount); }
+        catch (RuntimeException | LinkageError ex) { return false; }
+    }
+    public Outcome withdraw(OfflinePlayer player, double amount) { return mutate(() -> provider.withdrawPlayer(player, amount)); }
+    public Outcome deposit(OfflinePlayer player, double amount) { return mutate(() -> provider.depositPlayer(player, amount)); }
+
+    private Outcome mutate(java.util.function.Supplier<EconomyResponse> operation) {
+        if (!ready()) return Outcome.REJECTED;
         try {
-            Class<?> economy = Class.forName("net.milkbowl.vault.economy.Economy", true, vault.getClass().getClassLoader());
-            Object registration = server.getServicesManager().getRegistration(economy);
-            if (registration == null) return null;
-            Object provider = registration.getClass().getMethod("getProvider").invoke(registration);
-            Method withdraw = economy.getMethod("withdrawPlayer", OfflinePlayer.class, double.class);
-            Class<?> response = withdraw.getReturnType();
-            return new EconomyBridge(vault, provider, economy.getMethod("has", OfflinePlayer.class, double.class), withdraw,
-                economy.getMethod("depositPlayer", OfflinePlayer.class, double.class), response.getMethod("transactionSuccess"));
-        } catch (ReflectiveOperationException | LinkageError ex) { return null; }
-    }
-
-    public boolean ready() { return vault.isEnabled(); }
-    public boolean has(OfflinePlayer player, double amount) { return invokeBoolean(has, player, amount); }
-    public boolean withdraw(OfflinePlayer player, double amount) { return response(withdraw, player, amount); }
-    public boolean deposit(OfflinePlayer player, double amount) { return response(deposit, player, amount); }
-
-    private boolean invokeBoolean(Method method, OfflinePlayer player, double amount) {
-        try { return ready() && Boolean.TRUE.equals(method.invoke(provider, player, amount)); }
-        catch (ReflectiveOperationException | RuntimeException ex) { return false; }
-    }
-    private boolean response(Method method, OfflinePlayer player, double amount) {
-        try { Object value = method.invoke(provider, player, amount); return ready() && Boolean.TRUE.equals(successful.invoke(value)); }
-        catch (ReflectiveOperationException | RuntimeException ex) { return false; }
+            EconomyResponse response = operation.get();
+            return response != null && response.transactionSuccess() ? Outcome.SUCCEEDED : Outcome.REJECTED;
+        } catch (RuntimeException | LinkageError ex) {
+            return Outcome.UNKNOWN;
+        }
     }
 }

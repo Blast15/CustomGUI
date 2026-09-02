@@ -35,6 +35,23 @@ public final class ItemProviderRegistry {
         return Map.copyOf(statuses);
     }
 
+    public void validate(dev.customgui.config.ConfigSnapshot snapshot) {
+        for (var menu : snapshot.menus().values()) for (var item : menu.items()) validate(item.icon());
+        for (var recipe : snapshot.recipes().all()) {
+            for (var requirement : recipe.requirements()) if (requirement.type().equalsIgnoreCase("item"))
+                validate(dev.customgui.recipe.ItemSpec.from(requirement.values()));
+            for (var result : recipe.results()) if (result.type().equalsIgnoreCase("give-item"))
+                validate(dev.customgui.recipe.ItemSpec.from(result.values()));
+        }
+    }
+
+    private void validate(dev.customgui.recipe.ItemSpec spec) {
+        var provider = find(spec.provider()).orElseThrow(() -> new IllegalArgumentException("item provider unavailable: " + spec.provider()));
+        var probe = provider.create(new dev.customgui.recipe.ItemSpec(spec.provider(), spec.id(), spec.itemType(), 1));
+        if (probe == null || probe.getType().isAir() || probe.getAmount() != 1 || !matches(probe, spec))
+            throw new IllegalArgumentException("item provider rejected identity: " + spec.provider() + ':' + spec.id());
+    }
+
     public void invalidateAll() { providers.values().forEach(ItemProvider::invalidate); }
     public void refreshAll() { providers.values().forEach(ItemProvider::refresh); }
     private static boolean safeIdentify(ItemProvider provider, ItemStack stack) {
