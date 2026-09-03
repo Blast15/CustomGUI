@@ -4,7 +4,7 @@ main: dev.customgui.CustomGuiPlugin
 api-version: '1.21.11'
 description: YAML-driven GUI and transactional recipe engine. It does not define custom items.
 author: CustomGUI Contributors
-softdepend: [Vault, PlaceholderAPI, ItemsAdder, Oraxen, Nexo, MMOItems, AuraSkills, EcoItems, ExecutableItems, SCore, Slimefun, MythicMobs, MythicCrucible, Nova]
+softdepend: [Vault, PlaceholderAPI, ItemsAdder, Oraxen, Nexo, MMOItems, ItemEdit, CrazyEnchantments, AuraSkills, EcoItems, ExecutableItems, SCore, Slimefun, MythicMobs, MythicCrucible, Nova]
 commands:
   customgui:
     description: Open or administer CustomGUI menus

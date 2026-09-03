@@ -1,6 +1,8 @@
 package dev.customgui.transaction;
 
 import dev.customgui.integration.economy.EconomyBridge;
+import dev.customgui.integration.enchant.CrazyEnchantmentsBridge;
+import dev.customgui.integration.enchant.EnchantmentSpec;
 import dev.customgui.integration.item.ItemProviderRegistry;
 import dev.customgui.integration.placeholder.PlaceholderBridge;
 import dev.customgui.recipe.ItemSpec;
@@ -21,6 +23,7 @@ public final class PlayerTransactionExecutor {
     private final ItemProviderRegistry providers;
     private final EconomyBridge economy;
     private final PlaceholderBridge placeholders;
+    private final CrazyEnchantmentsBridge crazyEnchantments;
     private final IntSupplier maxBatchSize;
     private final Consumer<String> severe;
     private final HashSet<UUID> busy = new HashSet<>();
@@ -28,13 +31,18 @@ public final class PlayerTransactionExecutor {
 
     public PlayerTransactionExecutor(ItemProviderRegistry providers, EconomyBridge economy, PlaceholderBridge placeholders,
                                      IntSupplier maxBatchSize) {
-        this(providers, economy, placeholders, maxBatchSize, message -> Bukkit.getLogger().severe(message));
+        this(providers, economy, placeholders, null, maxBatchSize, message -> Bukkit.getLogger().severe(message));
     }
 
     public PlayerTransactionExecutor(ItemProviderRegistry providers, EconomyBridge economy, PlaceholderBridge placeholders,
                                      IntSupplier maxBatchSize, Consumer<String> severe) {
+        this(providers, economy, placeholders, null, maxBatchSize, severe);
+    }
+
+    public PlayerTransactionExecutor(ItemProviderRegistry providers, EconomyBridge economy, PlaceholderBridge placeholders,
+                                     CrazyEnchantmentsBridge crazyEnchantments, IntSupplier maxBatchSize, Consumer<String> severe) {
         this.providers = providers; this.economy = economy; this.placeholders = placeholders;
-        this.maxBatchSize = maxBatchSize; this.severe = severe;
+        this.crazyEnchantments = crazyEnchantments; this.maxBatchSize = maxBatchSize; this.severe = severe;
     }
 
     public TransactionResult execute(Player player, Recipe recipe) { return execute(player, recipe, 1); }
@@ -131,7 +139,7 @@ public final class PlayerTransactionExecutor {
                 var provider = providers.find(spec.provider()).orElse(null);
                 if (provider == null) continue;
                 int found = 0;
-                for (ItemStack stack : before) if (providers.matches(stack, spec)) found = Math.addExact(found, stack.getAmount());
+                for (ItemStack stack : before) if (matches(stack, spec, requirement.values())) found = Math.addExact(found, stack.getAmount());
                 upper = Math.min(upper, found / spec.amount());
             } else if (requirement.type().equalsIgnoreCase("money") || requirement.type().equalsIgnoreCase("currency"))
                 moneyPerBatch += decimal(requirement.values().get("amount"), "amount");
@@ -160,7 +168,7 @@ public final class PlayerTransactionExecutor {
                 boolean consume = Boolean.parseBoolean(String.valueOf(requirement.values().getOrDefault("consume", true)));
                 int needed = consume ? Math.multiplyExact(spec.amount(), batch) : spec.amount();
                 int[] source = consume ? available : amounts(before);
-                var itemPlan = InventoryPlanner.plan(source, needed, slot -> providers.matches(before[slot], spec));
+                var itemPlan = InventoryPlanner.plan(source, needed, slot -> matches(before[slot], spec, requirement.values()));
                 if (itemPlan.isEmpty()) return failed("missing-items");
                 if (consume) for (var removal : itemPlan) {
                     available[removal.slot()] -= removal.amount();
@@ -185,6 +193,8 @@ public final class PlayerTransactionExecutor {
             ItemStack created = provider.create(requested);
             if (created == null || created.getType().isAir() || created.getAmount() != amount || !providers.matches(created, requested))
                 return failed("provider-invalid-output");
+            if (crazyEnchantments == null && !EnchantmentSpec.from(output.values()).isEmpty()) return failed("provider-unavailable");
+            if (crazyEnchantments != null) created = crazyEnchantments.apply(created, output.values());
             outputs.add(created.clone());
         }
         var simulated = InventorySimulation.apply(before, totals, outputs);
@@ -214,6 +224,11 @@ public final class PlayerTransactionExecutor {
 
     private static boolean isItemOrMoney(String type) {
         return type.equalsIgnoreCase("item") || type.equalsIgnoreCase("money") || type.equalsIgnoreCase("currency");
+    }
+    private boolean matches(ItemStack stack, ItemSpec spec, Map<String, Object> values) {
+        if (!providers.matches(stack, spec)) return false;
+        Map<String, Integer> enchantments = EnchantmentSpec.from(values);
+        return enchantments.isEmpty() || crazyEnchantments != null && crazyEnchantments.matches(stack, values);
     }
     private static int[] amounts(ItemStack[] stacks) {
         int[] output = new int[stacks.length];

@@ -16,7 +16,7 @@ recipes:
     category: vanilla          # bộ lọc phụ bằng recipes.categories
     requirements:
       - type: item
-        provider: vanilla      # vanilla | itemsadder | oraxen | nexo | mmoitems
+        provider: vanilla      # vanilla | itemedit | itemsadder | oraxen | nexo | mmoitems
         material: EMERALD      # vanilla dùng material; plugin khác dùng id
         amount: 8              # nguyên liệu cho MỖI lần giao dịch
         consume: true          # true = trừ; false = chỉ cần sở hữu
@@ -143,7 +143,21 @@ recipes:
 #   - {type: item, provider: mythiccrucible, id: CrucibleHammer, amount: 1, consume: true}
 #   - {type: item, provider: nova, id: "machines:star_shard", amount: 1, consume: true}
 #   - {type: item, provider: template, id: captured_ruby, amount: 1, consume: true}
+#   - {type: item, provider: itemedit, id: server_sword, amount: 1, consume: true}
+#
+# Yêu cầu enchant CrazyEnchantments trên chính item requirement (không kiểm tra nhầm item khác):
+#   - type: item
+#     provider: vanilla
+#     material: DIAMOND_SWORD
+#     amount: 1
+#     consume: true
+#     crazy-enchantments: {rage: 3, lifesteal: 2}
 #
 # Result custom item dùng cùng định dạng identity:
 # results:
 #   - {type: give-item, provider: oraxen, id: legendary_blade, amount: 1}
+#   - type: give-item
+#     provider: vanilla
+#     material: DIAMOND_SWORD
+#     amount: 1
+#     crazy-enchantments: {rage: 3}

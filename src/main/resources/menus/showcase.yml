@@ -171,7 +171,7 @@ items:
 # ----------------------------------------------------------------------------
 # items:
 #   ia_icon:
-#     provider: itemsadder       # itemsadder | oraxen | nexo | ecoitems
+#     provider: itemsadder       # itemedit | itemsadder | oraxen | nexo | ecoitems
 #     id: "namespace:item_id"
 #     name: "<gold>Custom icon</gold>"
 #     slot: 22

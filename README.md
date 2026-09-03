@@ -108,7 +108,7 @@ items:
 
 `slot` accepts one integer. `slots` accepts integers, lists, and ranges such as `0-8`. When multiple visible items use one slot, the lowest `priority` wins, matching the familiar conditional-item pattern.
 
-Static icons and recipes support vanilla, ItemsAdder, Oraxen, Nexo, MMOItems, EcoItems, ExecutableItems, Slimefun and its addons, MythicMobs/MythicCrucible, Nova, captured templates, or a provider registered through `CustomGuiApi`. Display options include MiniMessage/PAPI name and lore, amount, glow, custom model data, hidden tooltip, and Bukkit item flags.
+Static icons and recipes support vanilla, ItemEdit server items, ItemsAdder, Oraxen, Nexo, MMOItems, EcoItems, ExecutableItems, Slimefun and its addons, MythicMobs/MythicCrucible, Nova, captured templates, or a provider registered through `CustomGuiApi`. Display options include MiniMessage/PAPI name and lore, amount, glow, custom model data, hidden tooltip, and Bukkit item flags.
 
 Recipe placeholders: `%recipe_id%`, `%recipe_group%`, `%recipe_category%`. Static-item placeholder: `%item_id%`. PlaceholderAPI placeholders can also be used when the integration is present.
 
@@ -155,6 +155,7 @@ The default `max-batch-size` is 256 and may be configured from 1 to 4096. Keep i
 | Integration | Create | Identity | Status |
 |---|---:|---:|---|
 | Vanilla | yes | provider-aware material | supported |
+| ItemEdit | yes | official ServerStorage ID | API/source-verified; use `provider: itemedit` |
 | ItemsAdder | yes | official namespaced ID | API-verified; runtime version must be staged |
 | Oraxen | yes | official item ID | API-verified; runtime version must be staged |
 | Nexo | yes | official item ID | API-verified; runtime version must be staged |
@@ -167,15 +168,35 @@ The default `max-batch-size` is 256 and may be configured from 1 to 4096. Keep i
 | Template capture | yes | exact Bukkit ItemMeta similarity | built in; fallback for plugins without an API |
 | Vault | n/a | balance/withdraw/refund | API-verified |
 | PlaceholderAPI | n/a | placeholder parsing/comparison | API-verified |
+| CrazyEnchantments | item modifier | official enchantment name + level | API/source-verified |
 | Other plugins | provider-defined | provider-defined | register through Bukkit `CustomGuiApi` service |
 
 Third-party adapters fail closed. Test the exact proprietary plugin versions used by your server before deploying paid-item recipes.
 
-Provider IDs in YAML are `itemsadder`, `oraxen`, `nexo`, `mmoitems`, `ecoitems`, `executableitems`, `slimefun`, `mythicmobs`, `mythiccrucible`, `nova`, and `template`. Nova and ItemsAdder commonly require namespaced IDs; MMOItems additionally requires `item-type`.
+Provider IDs in YAML are `itemedit`, `itemsadder`, `oraxen`, `nexo`, `mmoitems`, `ecoitems`, `executableitems`, `slimefun`, `mythicmobs`, `mythiccrucible`, `nova`, and `template`. ItemEdit uses the `/serveritem` ID; Nova and ItemsAdder commonly require namespaced IDs; MMOItems additionally requires `item-type`.
+
+CrazyEnchantments constraints attach to the same item requirement, so another enchanted item cannot satisfy it accidentally. The same map can decorate a generated result:
+
+```yaml
+requirements:
+  - type: item
+    provider: vanilla
+    material: DIAMOND_SWORD
+    amount: 1
+    crazy-enchantments: {rage: 3}
+results:
+  - type: give-item
+    provider: itemedit
+    id: upgraded_sword
+    amount: 1
+    crazy-enchantments: {lifesteal: 2}
+```
+
+Configured enchantments and levels are checked during startup/reload. If CrazyEnchantments is absent, a configuration that uses `crazy-enchantments` is rejected while the previous runtime remains active. ItemEdit identity is exact by design; if you want an ItemEdit item with pre-existing custom enchants to remain identifiable, save that final enchanted variant in ItemEdit.
 
 ### Plugins that enchant or modify items
 
-Custom enchant plugins such as AdvancedEnchantments, ExcellentEnchants, EcoEnchants, CrazyEnchantments, and similar lore/PDC/component modifiers do not need a second identity adapter. For a supported custom-item provider, CustomGUI asks that provider for the underlying item ID, so added enchantments, sockets, durability, stats, names, or lore do not turn the item into vanilla or another custom item. A matching requirement consumes the modified item; generated results are fresh provider items and intentionally do not copy modifiers from an input.
+CrazyEnchantments has direct requirement/result support through `crazy-enchantments`. Other enchant plugins such as AdvancedEnchantments, ExcellentEnchants and EcoEnchants remain item modifiers rather than identity providers. For a supported custom-item provider with stable identity APIs, CustomGUI asks that provider for the underlying item ID; generated results are fresh provider items and do not copy modifiers from an input unless explicitly configured.
 
 For an item system without a public identity API, hold the finished item and run:
 

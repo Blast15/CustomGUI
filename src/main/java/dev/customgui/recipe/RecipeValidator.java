@@ -12,7 +12,7 @@ public final class RecipeValidator {
             if (!REQUIREMENTS.contains(type)) throw new IllegalArgumentException("unsupported requirement: " + type);
             var values = requirement.values();
             switch (type) {
-                case "item" -> ItemSpec.from(values);
+                case "item" -> { ItemSpec.from(values); dev.customgui.integration.enchant.EnchantmentSpec.from(values); }
                 case "money", "currency" -> positiveDecimal(values.get("amount"), "amount");
                 case "permission" -> required(values.get("permission"), "permission");
                 case "level" -> nonNegative(values.getOrDefault("amount", values.get("min-level")), "level");
@@ -29,6 +29,7 @@ public final class RecipeValidator {
         for (var result : recipe.results()) {
             if (!result.type().equalsIgnoreCase("give-item")) throw new IllegalArgumentException("unsupported result: " + result.type());
             ItemSpec.from(result.values());
+            dev.customgui.integration.enchant.EnchantmentSpec.from(result.values());
         }
         return recipe;
     }

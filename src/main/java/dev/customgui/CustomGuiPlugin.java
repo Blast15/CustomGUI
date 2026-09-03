@@ -13,7 +13,9 @@ import dev.customgui.integration.item.ReflectiveItemProvider;
 import dev.customgui.integration.item.MmoItemsProvider;
 import dev.customgui.integration.item.ExtendedItemProvider;
 import dev.customgui.integration.item.TemplateItemProvider;
+import dev.customgui.integration.item.ItemEditProvider;
 import dev.customgui.integration.economy.EconomyBridge;
+import dev.customgui.integration.enchant.CrazyEnchantmentsBridge;
 import dev.customgui.integration.placeholder.PlaceholderBridge;
 import dev.customgui.transaction.PlayerTransactionExecutor;
 import dev.customgui.api.CustomGuiApi;
@@ -52,17 +54,21 @@ public final class CustomGuiPlugin extends JavaPlugin {
         templates = new TemplateItemProvider(getDataFolder().toPath());
         providers.register(templates);
         registerExternalProviders();
+        var crazyEnchantments = CrazyEnchantmentsBridge.discover(getServer());
         try { providers.validate(snapshot.get()); }
         catch (RuntimeException ex) { getLogger().severe("Configured item provider validation failed: " + ex.getMessage()); getServer().getPluginManager().disablePlugin(this); return; }
+        try { CrazyEnchantmentsBridge.validate(snapshot.get(), crazyEnchantments); }
+        catch (RuntimeException ex) { getLogger().severe("CrazyEnchantments validation failed: " + ex.getMessage()); getServer().getPluginManager().disablePlugin(this); return; }
         var placeholderBridge = PlaceholderBridge.discover(getServer());
-        transactions = new PlayerTransactionExecutor(providers, EconomyBridge.discover(getServer()), placeholderBridge,
+        transactions = new PlayerTransactionExecutor(providers, EconomyBridge.discover(getServer()), placeholderBridge, crazyEnchantments,
             () -> snapshot.get().maxBatchSize(), message -> getLogger().severe(message));
         messages = new MessageService(snapshot::get);
         gui = new GuiService(snapshot::get, sessions, providers, transactions, placeholderBridge, messages);
         menuCommands = new MenuCommandRegistry(getServer(), snapshot::get, gui);
         try { menuCommands.commit(menuCommands.plan(snapshot.get())); }
         catch (RuntimeException ex) { getLogger().severe("Command registration failed: " + ex.getMessage()); getServer().getPluginManager().disablePlugin(this); return; }
-        reloads = new ReloadCoordinator(getDataFolder(), snapshot, menuCommands, sessions, providers, message -> getLogger().severe(message));
+        reloads = new ReloadCoordinator(getDataFolder(), snapshot, menuCommands, sessions, providers, crazyEnchantments,
+            message -> getLogger().severe(message));
         editor = new EditorService(this, snapshot::get, this::reloadSnapshot);
         getServer().getServicesManager().register(CustomGuiApi.class, new CustomGuiApiImpl(providers, snapshot::get, gui), this,
             org.bukkit.plugin.ServicePriority.Normal);
@@ -175,6 +181,7 @@ public final class CustomGuiPlugin extends JavaPlugin {
         register("Oraxen", plugin -> new ReflectiveItemProvider("oraxen", plugin, ReflectiveItemProvider.Api.ORAXEN));
         register("Nexo", plugin -> new ReflectiveItemProvider("nexo", plugin, ReflectiveItemProvider.Api.NEXO));
         register("MMOItems", MmoItemsProvider::new);
+        register("ItemEdit", ItemEditProvider::new);
         registerExtended("ecoitems", "EcoItems", ExtendedItemProvider.Api.ECO_ITEMS);
         registerExtended("slimefun", "Slimefun", ExtendedItemProvider.Api.SLIMEFUN);
         registerExtended("mythicmobs", "MythicMobs", ExtendedItemProvider.Api.MYTHIC_MOBS);

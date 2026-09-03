@@ -3,6 +3,7 @@ package dev.customgui.config;
 import dev.customgui.command.MenuCommandRegistry;
 import dev.customgui.gui.SessionRegistry;
 import dev.customgui.integration.item.ItemProviderRegistry;
+import dev.customgui.integration.enchant.CrazyEnchantmentsBridge;
 import java.io.File;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -14,13 +15,15 @@ public final class ReloadCoordinator {
     private final MenuCommandRegistry commands;
     private final SessionRegistry sessions;
     private final ItemProviderRegistry providers;
+    private final CrazyEnchantmentsBridge crazyEnchantments;
     private final Consumer<String> severe;
     private boolean degraded;
 
     public ReloadCoordinator(File dataFolder, AtomicReference<ConfigSnapshot> active, MenuCommandRegistry commands,
-                             SessionRegistry sessions, ItemProviderRegistry providers, Consumer<String> severe) {
+                             SessionRegistry sessions, ItemProviderRegistry providers, CrazyEnchantmentsBridge crazyEnchantments,
+                             Consumer<String> severe) {
         this.dataFolder = dataFolder; this.active = active; this.commands = commands; this.sessions = sessions;
-        this.providers = providers; this.severe = severe;
+        this.providers = providers; this.crazyEnchantments = crazyEnchantments; this.severe = severe;
     }
 
     public Result reload() {
@@ -29,6 +32,7 @@ public final class ReloadCoordinator {
         try {
             ConfigSnapshot candidate = new ConfigLoader().load(dataFolder, previous.revision() + 1);
             providers.validate(candidate);
+            CrazyEnchantmentsBridge.validate(candidate, crazyEnchantments);
             var commandPlan = commands.plan(candidate);
             commands.commit(commandPlan);
             active.set(candidate);

@@ -252,7 +252,7 @@ public final class EditorService {
         Draft d = draft(p, Kind.MENU, menu); String b = "items." + item; YamlConfiguration y = d.yaml();
         if (!y.isConfigurationSection(b)) throw new IllegalArgumentException("Item không tồn tại: " + item);
         Inventory inv = inventory(new EditorHolder(EditorHolder.View.ITEM, menu, item, 0), 54, "<blue>Item:</blue> <white>" + item + "</white>");
-        inv.setItem(10, property(Material.ENDER_CHEST, "Provider", y.getString(b + ".provider", "vanilla"), "vanilla/itemsadder/oraxen/nexo/mmoitems"));
+        inv.setItem(10, property(Material.ENDER_CHEST, "Provider", y.getString(b + ".provider", "vanilla"), "vanilla/itemedit/itemsadder/oraxen/nexo/mmoitems"));
         inv.setItem(11, property(Material.STONE, "Material / ID", y.getString(b + ".material", y.getString(b + ".id", "-")), "Tự chọn material hoặc id theo provider"));
         inv.setItem(12, property(Material.IRON_SWORD, "MMOItems type", y.getString(b + ".item-type", "-"), "'-' để xóa"));
         inv.setItem(13, property(Material.SNOWBALL, "Amount", Integer.toString(y.getInt(b + ".amount", 1)), "Số item preview"));
