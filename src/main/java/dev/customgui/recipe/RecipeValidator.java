@@ -38,8 +38,7 @@ public final class RecipeValidator {
         if (value == null || String.valueOf(value).isBlank()) throw new IllegalArgumentException(key + " is required"); return String.valueOf(value);
     }
     private static int nonNegative(Object value, String key) {
-        int number; try { number = value instanceof Number n ? n.intValue() : Integer.parseInt(String.valueOf(value)); }
-        catch (NumberFormatException ex) { throw new IllegalArgumentException(key + " must be an integer"); }
+        int number = ItemSpec.exactInteger(value, key);
         if (number < 0) throw new IllegalArgumentException(key + " must be non-negative"); return number;
     }
     private static double positiveDecimal(Object value, String key) {

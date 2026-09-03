@@ -83,10 +83,11 @@ public class CraftingTransactionRegressionTest {
 
         storageContents = new ItemStack[36];
         when(inventory.getStorageContents()).thenAnswer(inv -> Arrays.copyOf(storageContents, storageContents.length));
+        when(inventory.getItem(org.mockito.ArgumentMatchers.anyInt())).thenAnswer(inv -> storageContents[(int) inv.getArgument(0)]);
         org.mockito.Mockito.doAnswer(inv -> {
-            storageContents = Arrays.copyOf((ItemStack[]) inv.getArgument(0), 36);
+            storageContents[(int) inv.getArgument(0)] = inv.getArgument(1);
             return null;
-        }).when(inventory).setStorageContents(any());
+        }).when(inventory).setItem(org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.nullable(ItemStack.class));
     }
 
     @AfterEach
@@ -414,6 +415,62 @@ public class CraftingTransactionRegressionTest {
         assertEquals(TransactionResult.Status.ROLLED_BACK, result.status(), result.toString());
     }
 
+    @Test
+    void allCanUseSlotFreedOnlyAtLargerBatch() {
+        for (int slot = 0; slot < storageContents.length; slot++) storageContents[slot] = createStack(Material.DIRT, 64, false, null);
+        storageContents[0] = createStack(Material.DIAMOND, 64, false, null);
+        Recipe recipe = new Recipe("all_frees_slot", "exchange", "default", true,
+            List.of(new RequirementSpec("item", Map.of("provider", "vanilla", "material", "DIAMOND", "amount", 1))),
+            List.of(new ResultSpec("give-item", Map.of("provider", "custom", "id", "custom_emerald", "amount", 1))));
+
+        TransactionResult result = executor.execute(player, recipe, 0);
+
+        assertEquals(TransactionResult.Status.SUCCESS, result.status(), result.toString());
+        assertEquals(64, result.batchSize());
+        assertEquals(Material.EMERALD, storageContents[0].getType());
+        assertEquals(64, storageContents[0].getAmount());
+    }
+
+    @Test
+    void commitDoesNotOverwriteUnrelatedInventoryChange() {
+        storageContents[0] = vanillaHelmet();
+        storageContents[1] = ingredientA();
+        storageContents[2] = ingredientB();
+        ItemStack unrelated = createStack(Material.GOLD_INGOT, 7, false, null);
+        org.mockito.Mockito.doAnswer(inv -> {
+            int slot = inv.getArgument(0);
+            storageContents[35] = unrelated;
+            storageContents[slot] = inv.getArgument(1);
+            return null;
+        }).when(inventory).setItem(org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.nullable(ItemStack.class));
+
+        TransactionResult result = executor.execute(player, createUpgradeHelmetRecipe(), 1);
+
+        assertEquals(TransactionResult.Status.SUCCESS, result.status(), result.toString());
+        assertEquals(unrelated, storageContents[35]);
+    }
+
+    @Test
+    void partialSlotCommitRollsBackOnlyTransactionMutations() {
+        storageContents[0] = vanillaHelmet();
+        storageContents[1] = ingredientA();
+        storageContents[2] = ingredientB();
+        ItemStack[] before = InventorySimulation.cloneContents(storageContents);
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        org.mockito.Mockito.doAnswer(inv -> {
+            int slot = inv.getArgument(0);
+            if (calls.incrementAndGet() == 2) throw new IllegalStateException("fault injection");
+            storageContents[slot] = inv.getArgument(1);
+            return null;
+        }).when(inventory).setItem(org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.nullable(ItemStack.class));
+
+        TransactionResult result = executor.execute(player, createUpgradeHelmetRecipe(), 1);
+
+        assertEquals(TransactionResult.Status.ROLLED_BACK, result.status(), result.toString());
+        assertTrue(result.compensation().complete());
+        assertTrue(Arrays.equals(before, storageContents));
+    }
+
     /** Regression Test 11: Failed transaction never partially consumes requirements */
     @Test
     void failedTransactionNeverPartiallyConsumesRequirements() {
@@ -590,6 +647,9 @@ public class CraftingTransactionRegressionTest {
 
         @Override
         public ItemStack create(ItemSpec spec) {
+            if ("custom_emerald".equalsIgnoreCase(spec.id())) {
+                return createStack(Material.EMERALD, spec.amount(), true, "Custom Emerald");
+            }
             if ("custom_diamond_helmet".equalsIgnoreCase(spec.id())) {
                 return createStack(Material.DIAMOND_HELMET, spec.amount(), true, "Custom Diamond Helmet");
             }
@@ -598,8 +658,10 @@ public class CraftingTransactionRegressionTest {
 
         @Override
         public boolean matches(ItemStack stack, ItemSpec spec) {
-            if (stack == null || stack.getType() != Material.DIAMOND_HELMET) return false;
-            return "custom_diamond_helmet".equalsIgnoreCase(spec.id()) && stack.hasItemMeta()
+            if (stack == null) return false;
+            boolean identity = "custom_diamond_helmet".equalsIgnoreCase(spec.id()) && stack.getType() == Material.DIAMOND_HELMET
+                || "custom_emerald".equalsIgnoreCase(spec.id()) && stack.getType() == Material.EMERALD;
+            return identity && stack.hasItemMeta()
                 && stack.getItemMeta().getPersistentDataContainer().getKeys().contains(CUSTOM_HELMET_KEY);
         }
 

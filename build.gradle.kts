@@ -24,7 +24,7 @@ dependencies {
 }
 
 java {
-    toolchain.languageVersion.set(JavaLanguageVersion.of(25))
+    toolchain.languageVersion.set(JavaLanguageVersion.of(providers.gradleProperty("testJava").getOrElse(JavaVersion.current().majorVersion).toInt()))
 }
 
 tasks.withType<JavaCompile>().configureEach {
@@ -39,6 +39,9 @@ tasks.processResources {
 
 tasks.test {
     useJUnitPlatform()
+    javaLauncher.set(javaToolchains.launcherFor {
+        languageVersion.set(JavaLanguageVersion.of(providers.gradleProperty("testJava").getOrElse(JavaVersion.current().majorVersion).toInt()))
+    })
 }
 
 tasks.jar {

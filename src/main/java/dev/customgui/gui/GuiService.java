@@ -93,7 +93,7 @@ public final class GuiService {
     public boolean canOpen(org.bukkit.command.CommandSender sender, String menuId) {
         var menu = snapshot.get().menus().get(menuId.toLowerCase(Locale.ROOT));
         return menu != null && (menu.permission().isBlank() || sender.hasPermission(menu.permission())
-            || sender.hasPermission("customgui.bypass." + menu.id()));
+            || sender.hasPermission("customgui.bypass.*") || sender.hasPermission("customgui.bypass." + menu.id()));
     }
 
     private void executeActions(Player player, String currentMenu, int page, List<String> configured) {

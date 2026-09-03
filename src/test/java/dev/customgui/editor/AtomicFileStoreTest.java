@@ -26,4 +26,13 @@ class AtomicFileStoreTest {
         assertFalse(Files.exists(file));
         assertThrows(IllegalArgumentException.class, () -> store.write(root.resolve("../outside.yml"), "x"));
     }
+
+    @Test void boundsBackupsPerFile() throws Exception {
+        Path file = root.resolve("menus/main.yml"); Files.createDirectories(file.getParent()); Files.writeString(file, "0");
+        var store = new AtomicFileStore(root);
+        for (int index = 1; index <= 25; index++) store.write(file, Integer.toString(index));
+        try (var backups = Files.list(root.resolve("backups/editor"))) {
+            assertEquals(20, backups.filter(path -> path.getFileName().toString().endsWith("-main.yml")).count());
+        }
+    }
 }

@@ -10,6 +10,10 @@ class RecipeValidatorTest {
         assertThrows(IllegalArgumentException.class, () -> RecipeValidator.validate(recipe(new RequirementSpec("invented", Map.of()))));
         assertThrows(IllegalArgumentException.class, () -> RecipeValidator.validate(recipe(new RequirementSpec("chance", Map.of("chance", 1.1)))));
     }
+    @Test void rejectsFractionalAndOverflowingIntegerRequirements() {
+        assertThrows(IllegalArgumentException.class, () -> RecipeValidator.validate(recipe(new RequirementSpec("level", Map.of("amount", 1.5)))));
+        assertThrows(IllegalArgumentException.class, () -> RecipeValidator.validate(recipe(new RequirementSpec("experience", Map.of("amount", 4_294_967_296L)))));
+    }
     private Recipe recipe(RequirementSpec requirement) {
         return new Recipe("valid", "g", "c", true, List.of(requirement),
             List.of(new ResultSpec("give-item", Map.of("provider", "vanilla", "material", "STONE"))));

@@ -16,7 +16,7 @@ public record ItemSpec(String provider, String id, String itemType, int amount) 
         var provider = text(map, "provider", "vanilla");
         var id = provider.equalsIgnoreCase("vanilla") ? text(map, "material", null) : text(map, "id", null);
         if (id == null || id.isBlank()) throw new IllegalArgumentException("item id/material is required");
-        return new ItemSpec(provider, id, text(map, "item-type", text(map, "type", "")), integer(map, "amount", 1));
+        return new ItemSpec(provider, id, text(map, "item-type", text(map, "type", "")), exactInteger(map.get("amount"), "amount", 1));
     }
 
     private static String normalize(String value) {
@@ -28,8 +28,12 @@ public record ItemSpec(String provider, String id, String itemType, int amount) 
         return value == null ? fallback : String.valueOf(value);
     }
 
-    static int integer(Map<?, ?> map, String key, int fallback) {
-        Object value = map.get(key);
+    public static int exactInteger(Object value, String key) {
+        if (value == null) throw new IllegalArgumentException(key + " is required");
+        return exactInteger(value, key, 0);
+    }
+
+    private static int exactInteger(Object value, String key, int fallback) {
         if (value == null) return fallback;
         if (value instanceof Byte || value instanceof Short || value instanceof Integer) return ((Number) value).intValue();
         if (value instanceof Long number) try { return Math.toIntExact(number.longValue()); }

@@ -27,10 +27,28 @@ public final class ReloadCoordinator {
     }
 
     public Result reload() {
-        if (degraded) return new Result(false, "plugin is degraded after a failed rollback", active.get());
+        return apply(prepare());
+    }
+
+    /** File I/O and schema parsing only; safe to call away from the server thread. */
+    public Prepared prepare() {
         ConfigSnapshot previous = active.get();
+        if (degraded) return new Prepared(previous, null, "plugin is degraded after a failed rollback");
         try {
             ConfigSnapshot candidate = new ConfigLoader().load(dataFolder, previous.revision() + 1);
+            return new Prepared(previous, candidate, null);
+        } catch (RuntimeException failure) {
+            return new Prepared(previous, null, message(failure));
+        }
+    }
+
+    /** Provider calls, command mutation and publication must run on the server thread. */
+    public Result apply(Prepared prepared) {
+        if (prepared.error() != null) return new Result(false, prepared.error(), active.get());
+        if (degraded) return new Result(false, "plugin is degraded after a failed rollback", active.get());
+        if (active.get() != prepared.previous()) return new Result(false, "configuration changed while reload was prepared", active.get());
+        try {
+            ConfigSnapshot candidate = prepared.candidate();
             providers.validate(candidate);
             CrazyEnchantmentsBridge.validate(candidate, crazyEnchantments);
             var commandPlan = commands.plan(candidate);
@@ -43,10 +61,15 @@ public final class ReloadCoordinator {
                 degraded = true;
                 severe.accept("Reload command rollback failed; plugin is degraded and reload is disabled: " + failure.getMessage());
             }
-            return new Result(false, failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage(), previous);
+            return new Result(false, message(failure), prepared.previous());
         }
     }
 
+    private static String message(Throwable failure) {
+        return failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage();
+    }
+
     public boolean degraded() { return degraded; }
+    public record Prepared(ConfigSnapshot previous, ConfigSnapshot candidate, String error) {}
     public record Result(boolean success, String error, ConfigSnapshot snapshot) {}
 }

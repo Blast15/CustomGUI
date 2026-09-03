@@ -90,18 +90,23 @@ public final class PlayerTransactionExecutor {
                 return result(id, TransactionResult.Status.FAILED, "economy-ambiguous", 0);
             }
             boolean withdrew = withdrawal == EconomyBridge.Outcome.SUCCEEDED;
-            boolean commitAttempted = false;
+            var mutations = changedSlots(before, plan.simulated());
+            var committed = new ArrayList<SlotMutation>();
             try {
                 if (!java.util.Arrays.equals(before, inventory.getStorageContents())) {
-                    CompensationReport report = compensate(inventory, before, false, withdrew, player, plan.money());
+                    CompensationReport report = compensate(inventory, committed, withdrew, player, plan.money());
                     if (!report.complete()) logCompensationFailure(id, report);
                     return new TransactionResult(id, report.complete() ? TransactionResult.Status.ROLLED_BACK : TransactionResult.Status.FAILED,
                         report.complete() ? "inventory-changed" : "compensation-failed", 0, report);
                 }
-                commitAttempted = true;
-                inventory.setStorageContents(InventorySimulation.cloneContents(plan.simulated()));
+                for (var mutation : mutations) {
+                    if (!java.util.Objects.equals(mutation.before(), inventory.getItem(mutation.slot())))
+                        throw new IllegalStateException("inventory changed during commit");
+                    committed.add(mutation);
+                    inventory.setItem(mutation.slot(), clone(mutation.after()));
+                }
             } catch (RuntimeException | LinkageError ex) {
-                CompensationReport report = compensate(inventory, before, commitAttempted, withdrew, player, plan.money());
+                CompensationReport report = compensate(inventory, committed, withdrew, player, plan.money());
                 if (!report.complete()) logCompensationFailure(id, report);
                 return new TransactionResult(id, report.complete() ? TransactionResult.Status.ROLLED_BACK : TransactionResult.Status.FAILED,
                     report.complete() ? "transaction-rolled-back" : "compensation-failed", 0, report);
@@ -118,10 +123,18 @@ public final class PlayerTransactionExecutor {
     public void release(UUID playerId) { busy.remove(playerId); }
     public void shutdown() { accepting = false; busy.clear(); }
 
-    private CompensationReport compensate(org.bukkit.inventory.PlayerInventory inventory, ItemStack[] before,
-                                          boolean restoreInventory, boolean refundEconomy, Player player, double money) {
-        return CompensationRunner.run(restoreInventory,
-            () -> inventory.setStorageContents(InventorySimulation.cloneContents(before)), refundEconomy, () -> {
+    private CompensationReport compensate(org.bukkit.inventory.PlayerInventory inventory, java.util.List<SlotMutation> committed,
+                                          boolean refundEconomy, Player player, double money) {
+        return CompensationRunner.run(!committed.isEmpty(), () -> {
+            for (int index = committed.size() - 1; index >= 0; index--) {
+                var mutation = committed.get(index);
+                ItemStack current = inventory.getItem(mutation.slot());
+                if (java.util.Objects.equals(mutation.before(), current)) continue;
+                if (!java.util.Objects.equals(mutation.after(), current))
+                    throw new IllegalStateException("inventory slot " + mutation.slot() + " changed before rollback");
+                inventory.setItem(mutation.slot(), clone(mutation.before()));
+            }
+        }, refundEconomy, () -> {
             var outcome = economy.deposit(player, money);
             if (outcome != EconomyBridge.Outcome.SUCCEEDED)
                 throw new IllegalStateException("economy refund " + outcome.name().toLowerCase(java.util.Locale.ROOT));
@@ -132,6 +145,16 @@ public final class PlayerTransactionExecutor {
         severe.accept("Transaction " + id + " compensation incomplete (inventory=" + report.inventoryRestored()
             + ", economy=" + report.economyRestored() + "); manual reconciliation is required");
     }
+
+    private static java.util.List<SlotMutation> changedSlots(ItemStack[] before, ItemStack[] after) {
+        var mutations = new ArrayList<SlotMutation>();
+        for (int slot = 0; slot < before.length; slot++)
+            if (!java.util.Objects.equals(before[slot], after[slot]))
+                mutations.add(new SlotMutation(slot, clone(before[slot]), clone(after[slot])));
+        return mutations;
+    }
+
+    private static ItemStack clone(ItemStack stack) { return stack == null ? null : stack.clone(); }
 
     private int batchUpperBound(Player player, Recipe recipe, ItemStack[] before, int configuredMaximum) {
         int upper = configuredMaximum;
@@ -239,8 +262,7 @@ public final class PlayerTransactionExecutor {
         Object value = values.get(key); if (value == null || String.valueOf(value).isBlank()) throw new IllegalArgumentException(key + " is required"); return String.valueOf(value);
     }
     private static int integer(Object value, String key) {
-        if (value instanceof Number number) return number.intValue();
-        try { return Integer.parseInt(String.valueOf(value)); } catch (NumberFormatException ex) { throw new IllegalArgumentException(key + " must be an integer"); }
+        return ItemSpec.exactInteger(value, key);
     }
     private static double decimal(Object value, String key) {
         double amount;
@@ -254,6 +276,7 @@ public final class PlayerTransactionExecutor {
         return new TransactionResult(id, status, key, batch);
     }
     private record PlannedRemoval(int slot, int amount, ItemSpec spec) {}
+    private record SlotMutation(int slot, ItemStack before, ItemStack after) {}
     private record Plan(java.util.List<PlannedRemoval> removals, ItemStack[] simulated, double money) {}
     private record PlanAttempt(Plan plan, String failure) {}
 }

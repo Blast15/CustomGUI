@@ -46,6 +46,7 @@ public final class CustomGuiPlugin extends JavaPlugin {
     private ReloadCoordinator reloads;
     private CrazyEnchantmentsBridge crazyEnchantments;
     private PlaceholderBridge placeholderBridge;
+    private boolean runtimeReady;
 
     @Override public void onEnable() {
         saveDefaults();
@@ -82,6 +83,7 @@ public final class CustomGuiPlugin extends JavaPlugin {
         editor = new EditorService(this, snapshot::get, this::reloadSnapshot);
         getServer().getPluginManager().registerEvents(new GuiListener(gui, sessions, transactions), this);
         getServer().getPluginManager().registerEvents(new EditorListener(editor), this);
+        runtimeReady = true;
         getLogger().info("CustomGUI " + getPluginMeta().getVersion() + " | Paper " + getServer().getMinecraftVersion()
             + " | Java " + Runtime.version().feature() + " | " + snapshot.get().menus().size() + " menus, "
             + snapshot.get().recipes().all().size() + " recipes, " + snapshot.get().invalidRecipes().size() + " invalid | " + providers.statuses());
@@ -97,14 +99,16 @@ public final class CustomGuiPlugin extends JavaPlugin {
 
     @Override public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command,
                                        @NotNull String label, @NotNull String[] args) {
+        if (!runtimeReady) { sender.sendMessage("CustomGUI is still initializing."); return true; }
         if (args.length == 0 || args[0].equalsIgnoreCase("help")) { sender.sendMessage(messages.render("usage")); return true; }
         if (args[0].equalsIgnoreCase("reload")) {
             if (!sender.hasPermission("customgui.admin")) return denied(sender);
-            String error = reloadSnapshot();
-            if (error == null) {
-                var replacement = snapshot.get();
-                sender.sendMessage(messages.render("reload-success", java.util.Map.of("menus", Integer.toString(replacement.menus().size()), "recipes", Integer.toString(replacement.recipes().all().size()))));
-            } else sender.sendMessage(messages.render("reload-failed", java.util.Map.of("error", error)));
+            reloadSnapshotAsync(error -> {
+                if (error == null) {
+                    var replacement = snapshot.get();
+                    sender.sendMessage(messages.render("reload-success", java.util.Map.of("menus", Integer.toString(replacement.menus().size()), "recipes", Integer.toString(replacement.recipes().all().size()))));
+                } else sender.sendMessage(messages.render("reload-failed", java.util.Map.of("error", error)));
+            });
             return true;
         }
         if (args[0].equalsIgnoreCase("editor")) {
@@ -164,6 +168,7 @@ public final class CustomGuiPlugin extends JavaPlugin {
 
     @Override public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command,
                                                 @NotNull String alias, @NotNull String[] args) {
+        if (!runtimeReady) return List.of();
         if (args.length == 1) return List.of("open", "editor", "capture", "list", "info", "providers", "reload", "help").stream()
             .filter(s -> !s.equals("editor") || sender.hasPermission("customgui.editor"))
             .filter(s -> !List.of("capture", "providers", "reload").contains(s) || sender.hasPermission("customgui.admin"))
@@ -183,6 +188,18 @@ public final class CustomGuiPlugin extends JavaPlugin {
         if (result.success()) getLogger().info("Reloaded " + result.snapshot().menus().size() + " menus and "
             + result.snapshot().recipes().all().size() + " recipes at revision " + result.snapshot().revision());
         return result.error();
+    }
+
+    private void reloadSnapshotAsync(java.util.function.Consumer<String> completion) {
+        getServer().getScheduler().runTaskAsynchronously(this, () -> {
+            var prepared = reloads.prepare();
+            getServer().getScheduler().runTask(this, () -> {
+                var result = reloads.apply(prepared);
+                if (result.success()) getLogger().info("Reloaded " + result.snapshot().menus().size() + " menus and "
+                    + result.snapshot().recipes().all().size() + " recipes at revision " + result.snapshot().revision());
+                completion.accept(result.error());
+            });
+        });
     }
 
     private void registerExternalProviders() {
