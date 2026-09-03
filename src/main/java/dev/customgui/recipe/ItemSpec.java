@@ -31,7 +31,17 @@ public record ItemSpec(String provider, String id, String itemType, int amount) 
     static int integer(Map<?, ?> map, String key, int fallback) {
         Object value = map.get(key);
         if (value == null) return fallback;
-        if (value instanceof Number number) return number.intValue();
+        if (value instanceof Byte || value instanceof Short || value instanceof Integer) return ((Number) value).intValue();
+        if (value instanceof Long number) try { return Math.toIntExact(number.longValue()); }
+        catch (ArithmeticException ex) { throw new IllegalArgumentException(key + " is outside the integer range", ex); }
+        if (value instanceof java.math.BigInteger number) try { return number.intValueExact(); }
+        catch (ArithmeticException ex) { throw new IllegalArgumentException(key + " is outside the integer range", ex); }
+        if (value instanceof Number number) {
+            double exact = number.doubleValue();
+            if (!Double.isFinite(exact) || exact != Math.rint(exact) || exact < Integer.MIN_VALUE || exact > Integer.MAX_VALUE)
+                throw new IllegalArgumentException(key + " must be an integer in range");
+            return (int) exact;
+        }
         try { return Integer.parseInt(String.valueOf(value)); }
         catch (NumberFormatException ex) { throw new IllegalArgumentException(key + " must be an integer"); }
     }

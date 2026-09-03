@@ -31,6 +31,8 @@ public final class GuiService {
     private final PlaceholderBridge placeholders;
     private final MessageService messages;
     private final MiniMessage mini = MiniMessage.miniMessage();
+    private long recipeCacheRevision = Long.MIN_VALUE;
+    private final Map<String, List<Recipe>> recipeCache = new HashMap<>();
 
     public GuiService(Supplier<ConfigSnapshot> snapshot, SessionRegistry sessions, ItemProviderRegistry providers,
                       PlayerTransactionExecutor transactions, PlaceholderBridge placeholders, MessageService messages) {
@@ -43,8 +45,7 @@ public final class GuiService {
         var current = snapshot.get();
         var menu = current.menus().get(menuId.toLowerCase(Locale.ROOT));
         if (menu == null) return false;
-        if (!menu.permission().isBlank() && !player.hasPermission(menu.permission())
-            && !player.hasPermission("customgui.bypass." + menu.id())) {
+        if (!canOpen(player, menu.id())) {
             player.sendMessage(messages.render("no-permission"));
             return true;
         }
@@ -89,6 +90,12 @@ public final class GuiService {
 
     public boolean allowPlayerInventoryInteraction() { return snapshot.get().allowPlayerInventoryInteraction(); }
 
+    public boolean canOpen(org.bukkit.command.CommandSender sender, String menuId) {
+        var menu = snapshot.get().menus().get(menuId.toLowerCase(Locale.ROOT));
+        return menu != null && (menu.permission().isBlank() || sender.hasPermission(menu.permission())
+            || sender.hasPermission("customgui.bypass." + menu.id()));
+    }
+
     private void executeActions(Player player, String currentMenu, int page, List<String> configured) {
         for (String raw : configured) {
             var action = MenuAction.parse(raw);
@@ -113,8 +120,8 @@ public final class GuiService {
                     return;
                 }
                 case MESSAGE -> player.sendMessage(component(player, action.value(), Map.of()));
-                case PLAYER_COMMAND -> Bukkit.dispatchCommand(player, command(player, action.value()));
-                case CONSOLE_COMMAND -> Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command(player, action.value()));
+                case PLAYER_COMMAND -> dispatch(player, player, action.value());
+                case CONSOLE_COMMAND -> dispatch(Bukkit.getConsoleSender(), player, action.value());
             }
         }
     }
@@ -130,11 +137,12 @@ public final class GuiService {
     }
 
     private List<Recipe> recipes(ConfigSnapshot current, String menuId) {
+        if (recipeCacheRevision != current.revision()) { recipeCache.clear(); recipeCacheRevision = current.revision(); }
         var menu = current.menus().get(menuId);
-        return current.recipes().all().stream().filter(Recipe::enabled)
+        return recipeCache.computeIfAbsent(menuId, ignored -> current.recipes().all().stream().filter(Recipe::enabled)
             .filter(recipe -> menu.recipeGroups().isEmpty() || menu.recipeGroups().contains(recipe.group().toLowerCase(Locale.ROOT)))
             .filter(recipe -> menu.recipeCategories().isEmpty() || menu.recipeCategories().contains(recipe.category().toLowerCase(Locale.ROOT)))
-            .sorted(Comparator.comparing(Recipe::id)).toList();
+            .sorted(Comparator.comparing(Recipe::id)).toList());
     }
 
     private Map<Integer, MenuItemDefinition> staticItems(Player player, String menuId) {
@@ -151,7 +159,7 @@ public final class GuiService {
             var spec = ItemSpec.from(result.values());
             var provider = providers.find(spec.provider()).orElse(null);
             if (provider != null) { stack = provider.create(new ItemSpec(spec.provider(), spec.id(), spec.itemType(), 1)); break; }
-        } catch (IllegalArgumentException ignored) { /* unavailable previews fall back to paper */ }
+        } catch (RuntimeException | LinkageError ignored) { /* unavailable previews fall back to paper */ }
         if (stack == null) stack = new ItemStack(Material.PAPER);
         var menu = snapshot.get().menus().get(menuId);
         var values = Map.of("recipe_id", recipe.id(), "recipe_group", recipe.group(), "recipe_category", recipe.category());
@@ -189,7 +197,7 @@ public final class GuiService {
 
     private Component component(Player player, String input, Map<String, String> values) {
         String text = replace(input, values);
-        if (placeholders != null) try { text = placeholders.parse(player, text); } catch (RuntimeException ignored) { /* render raw */ }
+        if (placeholders != null) text = safePlaceholders(player, text);
         try { return mini.deserialize(text); } catch (RuntimeException ex) { return Component.text(text); }
     }
 
@@ -199,10 +207,31 @@ public final class GuiService {
         return output;
     }
 
+    private void dispatch(org.bukkit.command.CommandSender sender, Player player, String configured) {
+        String command = command(player, configured);
+        if (command != null) Bukkit.dispatchCommand(sender, command);
+    }
+
     private String command(Player player, String configured) {
         String value = configured.replace("%player%", player.getName());
         if (placeholders != null) try { value = placeholders.parse(player, value); } catch (RuntimeException ignored) { /* execute raw */ }
+        if (value.indexOf('\r') >= 0 || value.indexOf('\n') >= 0) {
+            player.sendMessage(messages.render("transaction-failed"));
+            return null;
+        }
         return value.startsWith("/") ? value.substring(1) : value;
+    }
+
+    private String safePlaceholders(Player player, String configured) {
+        var matcher = java.util.regex.Pattern.compile("%[^%\\r\\n]{1,128}%").matcher(configured);
+        var output = new StringBuffer();
+        while (matcher.find()) {
+            String replacement;
+            try { replacement = mini.escapeTags(placeholders.parse(player, matcher.group())); }
+            catch (RuntimeException ignored) { replacement = matcher.group(); }
+            matcher.appendReplacement(output, java.util.regex.Matcher.quoteReplacement(replacement));
+        }
+        return matcher.appendTail(output).toString();
     }
 
     private static String clickName(ClickType click) {

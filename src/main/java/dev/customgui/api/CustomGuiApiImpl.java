@@ -12,11 +12,14 @@ import org.bukkit.entity.Player;
 public final class CustomGuiApiImpl implements CustomGuiApi {
     private final ItemProviderRegistry providers;
     private final Supplier<ConfigSnapshot> snapshot;
-    private final GuiService gui;
-    public CustomGuiApiImpl(ItemProviderRegistry providers, Supplier<ConfigSnapshot> snapshot, GuiService gui) {
+    private final Supplier<GuiService> gui;
+    public CustomGuiApiImpl(ItemProviderRegistry providers, Supplier<ConfigSnapshot> snapshot, Supplier<GuiService> gui) {
         this.providers = providers; this.snapshot = snapshot; this.gui = gui;
     }
     @Override public void registerItemProvider(ItemProvider provider) { providers.register(provider); }
     @Override public Optional<Recipe> recipe(String id) { return snapshot.get().recipes().find(id); }
-    @Override public boolean openMenu(Player player, String menuId) { return gui.open(player, menuId, 0); }
+    @Override public boolean openMenu(Player player, String menuId) {
+        GuiService service = gui.get();
+        return service != null && service.open(player, menuId, 0);
+    }
 }

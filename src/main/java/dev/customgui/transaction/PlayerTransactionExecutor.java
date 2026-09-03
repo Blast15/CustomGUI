@@ -90,15 +90,18 @@ public final class PlayerTransactionExecutor {
                 return result(id, TransactionResult.Status.FAILED, "economy-ambiguous", 0);
             }
             boolean withdrew = withdrawal == EconomyBridge.Outcome.SUCCEEDED;
-            if (!java.util.Arrays.equals(before, inventory.getStorageContents())) {
-                CompensationReport report = compensate(inventory, before, false, withdrew, player, plan.money());
-                if (!report.complete()) logCompensationFailure(id, report);
-                return new TransactionResult(id, report.complete() ? TransactionResult.Status.ROLLED_BACK : TransactionResult.Status.FAILED,
-                    report.complete() ? "inventory-changed" : "compensation-failed", 0, report);
-            }
-            try { inventory.setStorageContents(InventorySimulation.cloneContents(plan.simulated())); }
-            catch (RuntimeException | LinkageError ex) {
-                CompensationReport report = compensate(inventory, before, true, withdrew, player, plan.money());
+            boolean commitAttempted = false;
+            try {
+                if (!java.util.Arrays.equals(before, inventory.getStorageContents())) {
+                    CompensationReport report = compensate(inventory, before, false, withdrew, player, plan.money());
+                    if (!report.complete()) logCompensationFailure(id, report);
+                    return new TransactionResult(id, report.complete() ? TransactionResult.Status.ROLLED_BACK : TransactionResult.Status.FAILED,
+                        report.complete() ? "inventory-changed" : "compensation-failed", 0, report);
+                }
+                commitAttempted = true;
+                inventory.setStorageContents(InventorySimulation.cloneContents(plan.simulated()));
+            } catch (RuntimeException | LinkageError ex) {
+                CompensationReport report = compensate(inventory, before, commitAttempted, withdrew, player, plan.money());
                 if (!report.complete()) logCompensationFailure(id, report);
                 return new TransactionResult(id, report.complete() ? TransactionResult.Status.ROLLED_BACK : TransactionResult.Status.FAILED,
                     report.complete() ? "transaction-rolled-back" : "compensation-failed", 0, report);
@@ -107,6 +110,7 @@ public final class PlayerTransactionExecutor {
         } catch (ArithmeticException | IllegalArgumentException ex) {
             return result(id, TransactionResult.Status.REJECTED, "invalid-amount", 0);
         } catch (RuntimeException ex) {
+            severe.accept("Transaction " + id + " failed before commit: " + ex);
             return result(id, TransactionResult.Status.FAILED, "transaction-failed", 0);
         } finally { busy.remove(player.getUniqueId()); }
     }
@@ -160,21 +164,21 @@ public final class PlayerTransactionExecutor {
         for (int slot = 0; slot < before.length; slot++) available[slot] = before[slot] == null ? 0 : before[slot].getAmount();
         var removals = new ArrayList<PlannedRemoval>();
         double money = 0;
-        for (var requirement : recipe.requirements()) {
+        for (boolean consumePass : new boolean[] {true, false}) for (var requirement : recipe.requirements()) {
             if (requirement.type().equalsIgnoreCase("item")) {
                 ItemSpec spec = ItemSpec.from(requirement.values());
                 var provider = providers.find(spec.provider()).orElse(null);
                 if (provider == null) return failed("provider-unavailable");
                 boolean consume = Boolean.parseBoolean(String.valueOf(requirement.values().getOrDefault("consume", true)));
+                if (consume != consumePass) continue;
                 int needed = consume ? Math.multiplyExact(spec.amount(), batch) : spec.amount();
-                int[] source = consume ? available : amounts(before);
-                var itemPlan = InventoryPlanner.plan(source, needed, slot -> matches(before[slot], spec, requirement.values()));
+                var itemPlan = InventoryPlanner.plan(available, needed, slot -> matches(before[slot], spec, requirement.values()));
                 if (itemPlan.isEmpty()) return failed("missing-items");
                 if (consume) for (var removal : itemPlan) {
                     available[removal.slot()] -= removal.amount();
                     removals.add(new PlannedRemoval(removal.slot(), removal.amount(), spec));
                 }
-            } else if (requirement.type().equalsIgnoreCase("money") || requirement.type().equalsIgnoreCase("currency")) {
+            } else if (consumePass && (requirement.type().equalsIgnoreCase("money") || requirement.type().equalsIgnoreCase("currency"))) {
                 money += decimal(requirement.values().get("amount"), "amount") * batch;
             }
         }
@@ -230,11 +234,6 @@ public final class PlayerTransactionExecutor {
         boolean allowEnchantedLore = !enchantments.isEmpty();
         if (!providers.matches(stack, spec, allowEnchantedLore)) return false;
         return enchantments.isEmpty() || crazyEnchantments != null && crazyEnchantments.matches(stack, values);
-    }
-    private static int[] amounts(ItemStack[] stacks) {
-        int[] output = new int[stacks.length];
-        for (int slot = 0; slot < stacks.length; slot++) output[slot] = stacks[slot] == null ? 0 : stacks[slot].getAmount();
-        return output;
     }
     private static String required(Map<String, Object> values, String key) {
         Object value = values.get(key); if (value == null || String.valueOf(value).isBlank()) throw new IllegalArgumentException(key + " is required"); return String.valueOf(value);

@@ -44,6 +44,8 @@ public final class CustomGuiPlugin extends JavaPlugin {
     private EditorService editor;
     private TemplateItemProvider templates;
     private ReloadCoordinator reloads;
+    private CrazyEnchantmentsBridge crazyEnchantments;
+    private PlaceholderBridge placeholderBridge;
 
     @Override public void onEnable() {
         saveDefaults();
@@ -54,12 +56,20 @@ public final class CustomGuiPlugin extends JavaPlugin {
         templates = new TemplateItemProvider(getDataFolder().toPath());
         providers.register(templates);
         registerExternalProviders();
-        var crazyEnchantments = CrazyEnchantmentsBridge.discover(getServer());
+        crazyEnchantments = CrazyEnchantmentsBridge.discover(getServer());
+        placeholderBridge = PlaceholderBridge.discover(getServer());
+        getServer().getServicesManager().register(CustomGuiApi.class, new CustomGuiApiImpl(providers, snapshot::get, () -> gui), this,
+            org.bukkit.plugin.ServicePriority.Normal);
+        // Dependent addons register API providers in onEnable, so final validation must happen after plugin startup.
+        getServer().getScheduler().runTask(this, this::finishEnable);
+    }
+
+    private void finishEnable() {
+        if (!isEnabled()) return;
         try { providers.validate(snapshot.get()); }
         catch (RuntimeException ex) { getLogger().severe("Configured item provider validation failed: " + ex.getMessage()); getServer().getPluginManager().disablePlugin(this); return; }
         try { CrazyEnchantmentsBridge.validate(snapshot.get(), crazyEnchantments); }
         catch (RuntimeException ex) { getLogger().severe("CrazyEnchantments validation failed: " + ex.getMessage()); getServer().getPluginManager().disablePlugin(this); return; }
-        var placeholderBridge = PlaceholderBridge.discover(getServer());
         transactions = new PlayerTransactionExecutor(providers, EconomyBridge.discover(getServer()), placeholderBridge, crazyEnchantments,
             () -> snapshot.get().maxBatchSize(), message -> getLogger().severe(message));
         messages = new MessageService(snapshot::get);
@@ -70,8 +80,6 @@ public final class CustomGuiPlugin extends JavaPlugin {
         reloads = new ReloadCoordinator(getDataFolder(), snapshot, menuCommands, sessions, providers, crazyEnchantments,
             message -> getLogger().severe(message));
         editor = new EditorService(this, snapshot::get, this::reloadSnapshot);
-        getServer().getServicesManager().register(CustomGuiApi.class, new CustomGuiApiImpl(providers, snapshot::get, gui), this,
-            org.bukkit.plugin.ServicePriority.Normal);
         getServer().getPluginManager().registerEvents(new GuiListener(gui, sessions, transactions), this);
         getServer().getPluginManager().registerEvents(new EditorListener(editor), this);
         getLogger().info("CustomGUI " + getPluginMeta().getVersion() + " | Paper " + getServer().getMinecraftVersion()
@@ -161,7 +169,8 @@ public final class CustomGuiPlugin extends JavaPlugin {
             .filter(s -> !List.of("capture", "providers", "reload").contains(s) || sender.hasPermission("customgui.admin"))
             .filter(s -> s.startsWith(args[0].toLowerCase(java.util.Locale.ROOT))).toList();
         if (args.length == 3 && args[0].equalsIgnoreCase("capture")) return List.of("replace").stream().filter(s -> s.startsWith(args[2].toLowerCase())).toList();
-        if (args.length == 2 && args[0].equalsIgnoreCase("open")) return snapshot.get().menus().keySet().stream().filter(s -> s.startsWith(args[1])).sorted().toList();
+        if (args.length == 2 && args[0].equalsIgnoreCase("open")) return snapshot.get().menus().keySet().stream()
+            .filter(id -> gui.canOpen(sender, id)).filter(s -> s.startsWith(args[1].toLowerCase(java.util.Locale.ROOT))).sorted().toList();
         if (args.length == 3 && args[0].equalsIgnoreCase("open") && sender.hasPermission("customgui.open.others"))
             return getServer().getOnlinePlayers().stream().map(Player::getName).filter(name -> name.toLowerCase().startsWith(args[2].toLowerCase())).sorted().toList();
         return List.of();

@@ -8,10 +8,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 import dev.customgui.integration.item.ItemProvider;
 import dev.customgui.integration.item.ItemProviderRegistry;
 import dev.customgui.integration.item.VanillaItemProvider;
+import dev.customgui.integration.economy.EconomyBridge;
 import dev.customgui.recipe.ItemSpec;
 import dev.customgui.recipe.Recipe;
 import dev.customgui.recipe.RequirementSpec;
@@ -373,6 +375,43 @@ public class CraftingTransactionRegressionTest {
         assertTrue(customProvider.matches(item1, spec));
         assertTrue(customProvider.matches(item2, spec));
         assertFalse(providers.find("vanilla").orElseThrow().matches(item1, new ItemSpec("vanilla", "DIAMOND_HELMET", "", 1)));
+    }
+
+    @Test
+    void retainedRequirementMustRemainAfterOverlappingConsumption() {
+        storageContents[0] = createStack(Material.DIAMOND, 64, false, null);
+        Recipe recipe = new Recipe("retained_key", "exchange", "default", true, List.of(
+            new RequirementSpec("item", Map.of("provider", "vanilla", "material", "DIAMOND", "amount", 1, "consume", false)),
+            new RequirementSpec("item", Map.of("provider", "vanilla", "material", "DIAMOND", "amount", 64, "consume", true))),
+            List.of(new ResultSpec("give-item", Map.of("provider", "custom", "id", "custom_diamond_helmet", "amount", 1))));
+
+        TransactionResult result = executor.execute(player, recipe, 1);
+
+        assertEquals(TransactionResult.Status.REJECTED, result.status());
+        assertEquals("missing-items", result.messageKey());
+        assertEquals(64, storageContents[0].getAmount());
+    }
+
+    @Test
+    void refundsSuccessfulWithdrawalWhenPostWithdrawalInventoryReadFails() {
+        storageContents[0] = createStack(Material.DIAMOND, 1, false, null);
+        ItemStack[] stable = InventorySimulation.cloneContents(storageContents);
+        when(inventory.getStorageContents()).thenReturn(stable, stable).thenThrow(new IllegalStateException("fault injection"));
+        EconomyBridge economy = mock(EconomyBridge.class);
+        when(economy.ready()).thenReturn(true);
+        when(economy.has(player, 10.0)).thenReturn(true);
+        when(economy.withdraw(player, 10.0)).thenReturn(EconomyBridge.Outcome.SUCCEEDED);
+        when(economy.deposit(player, 10.0)).thenReturn(EconomyBridge.Outcome.SUCCEEDED);
+        executor = new PlayerTransactionExecutor(providers, economy, null, () -> 64, System.err::println);
+        Recipe recipe = new Recipe("paid", "exchange", "default", true,
+            List.of(new RequirementSpec("money", Map.of("amount", 10.0))),
+            List.of(new ResultSpec("give-item", Map.of("provider", "custom", "id", "custom_diamond_helmet", "amount", 1))));
+
+        TransactionResult result = executor.execute(player, recipe, 1);
+
+        verify(economy).withdraw(player, 10.0);
+        verify(economy).deposit(player, 10.0);
+        assertEquals(TransactionResult.Status.ROLLED_BACK, result.status(), result.toString());
     }
 
     /** Regression Test 11: Failed transaction never partially consumes requirements */

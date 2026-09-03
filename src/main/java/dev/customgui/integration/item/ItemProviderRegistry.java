@@ -41,6 +41,8 @@ public final class ItemProviderRegistry {
 
     public boolean isCustomItem(ItemStack stack, boolean allowEnchantedLore) {
         if (stack == null || stack.getType().isAir()) return false;
+        // If a known identity source is degraded, vanilla ownership cannot be established safely.
+        if (providers.values().stream().anyMatch(candidate -> !candidate.id().equals("vanilla") && !candidate.ready())) return true;
         if (providers.values().stream()
             .filter(candidate -> !candidate.id().equals("vanilla") && candidate.ready())
             .anyMatch(candidate -> safeIdentify(candidate, stack))) return true;
