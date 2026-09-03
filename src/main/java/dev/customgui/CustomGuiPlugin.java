@@ -52,6 +52,7 @@ public final class CustomGuiPlugin extends JavaPlugin {
         saveDefaults();
         try { snapshot.set(new ConfigLoader().load(getDataFolder(), 1)); }
         catch (RuntimeException ex) { getLogger().severe("Configuration invalid: " + ex.getMessage()); getServer().getPluginManager().disablePlugin(this); return; }
+        messages = new MessageService(snapshot::get);
         providers = new ItemProviderRegistry();
         providers.register(new VanillaItemProvider());
         templates = new TemplateItemProvider(getDataFolder().toPath());
@@ -73,7 +74,6 @@ public final class CustomGuiPlugin extends JavaPlugin {
         catch (RuntimeException ex) { getLogger().severe("CrazyEnchantments validation failed: " + ex.getMessage()); getServer().getPluginManager().disablePlugin(this); return; }
         transactions = new PlayerTransactionExecutor(providers, EconomyBridge.discover(getServer()), placeholderBridge, crazyEnchantments,
             () -> snapshot.get().maxBatchSize(), message -> getLogger().severe(message));
-        messages = new MessageService(snapshot::get);
         gui = new GuiService(snapshot::get, sessions, providers, transactions, placeholderBridge, messages);
         menuCommands = new MenuCommandRegistry(getServer(), snapshot::get, gui);
         try { menuCommands.commit(menuCommands.plan(snapshot.get())); }
@@ -90,6 +90,7 @@ public final class CustomGuiPlugin extends JavaPlugin {
     }
 
     @Override public void onDisable() {
+        runtimeReady = false;
         if (transactions != null) transactions.shutdown();
         sessions.invalidateAll();
         if (editor != null) editor.shutdown();
@@ -99,7 +100,7 @@ public final class CustomGuiPlugin extends JavaPlugin {
 
     @Override public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command,
                                        @NotNull String label, @NotNull String[] args) {
-        if (!runtimeReady) { sender.sendMessage("CustomGUI is still initializing."); return true; }
+    if (!runtimeReady) { sender.sendMessage(net.kyori.adventure.text.Component.text("CustomGUI is still starting.")); return true; }
         if (args.length == 0 || args[0].equalsIgnoreCase("help")) { sender.sendMessage(messages.render("usage")); return true; }
         if (args[0].equalsIgnoreCase("reload")) {
             if (!sender.hasPermission("customgui.admin")) return denied(sender);

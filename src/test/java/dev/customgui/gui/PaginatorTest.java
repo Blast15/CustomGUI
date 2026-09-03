@@ -8,6 +8,6 @@ class PaginatorTest {
     @Test void pagesWithoutOverflow() {
         assertEquals(List.of(3, 4), Paginator.page(List.of(1, 2, 3, 4, 5), 1, 2));
         assertEquals(List.of(), Paginator.page(List.of(1), 5, 2));
+        assertEquals(List.of(), Paginator.page(List.of(1), Integer.MAX_VALUE, 54));
     }
 }
-

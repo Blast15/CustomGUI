@@ -10,7 +10,7 @@ import org.bukkit.block.BlockType;
 import org.bukkit.inventory.ItemType;
 import org.mockito.Mockito;
 
-@SuppressWarnings({"removal", "unchecked"})
+@SuppressWarnings({"deprecation", "removal", "unchecked"})
 public class TestRegistryAccess implements RegistryAccess {
     private final Registry<BlockType> blockRegistry = Mockito.mock(Registry.class);
     private final Registry<ItemType> itemRegistry = Mockito.mock(Registry.class);
@@ -59,4 +59,3 @@ public class TestRegistryAccess implements RegistryAccess {
         return Mockito.mock(Registry.class);
     }
 }
-

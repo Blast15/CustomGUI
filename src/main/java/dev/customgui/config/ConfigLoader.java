@@ -44,7 +44,8 @@ public final class ConfigLoader {
                 permission(yaml.getString("permission", ""), file), commandList(configuredCommands, file),
                 contentSlots, lowerList(yaml.getStringList("recipes.groups")), lowerList(yaml.getStringList("recipes.categories")),
                 recipeActions(yaml.getConfigurationSection("recipes.click-actions"), file),
-                yaml.getString("recipes.name", "<yellow>%recipe_id%</yellow>"), yaml.getStringList("recipes.lore"),
+                boundedText(yaml.getString("recipes.name", "<yellow>%recipe_id%</yellow>"), "recipe name", file),
+                boundedTextList(yaml, "recipes.lore", file),
                 yaml.isConfigurationSection("items") ? menuItems(yaml.getConfigurationSection("items"), size, file) : legacyItems(size, yaml.contains("content-slots")));
             if (menus.putIfAbsent(id, menu) != null) throw new IllegalArgumentException("duplicate menu id: " + id);
         });
@@ -84,9 +85,15 @@ public final class ConfigLoader {
 
     private static List<Map<String, Object>> list(ConfigurationSection section, String path) {
         var output = new ArrayList<Map<String, Object>>();
-        for (Map<?, ?> raw : section.getMapList(path)) {
+        Object configured = section.get(path);
+        if (configured == null) return List.of();
+        if (!(configured instanceof List<?> values))
+            throw new IllegalArgumentException(section.getCurrentPath() + "." + path + " must be a list");
+        for (Object value : values) {
+            if (!(value instanceof Map<?, ?> raw))
+                throw new IllegalArgumentException(section.getCurrentPath() + "." + path + " entries must be maps");
             var map = new LinkedHashMap<String, Object>();
-            raw.forEach((key, value) -> map.put(String.valueOf(key), value));
+            raw.forEach((key, nested) -> map.put(String.valueOf(key), nested));
             output.add(Map.copyOf(map));
         }
         return output;
@@ -108,8 +115,7 @@ public final class ConfigLoader {
             var actionSection = item.getConfigurationSection("actions");
             if (actionSection != null) for (String click : actionSection.getKeys(false))
                 actions.put(click, validatedActions(textList(actionSection.get(click)), file, id));
-            var lore = item.getStringList("lore");
-            lore.forEach(line -> boundedText(line, "lore", file));
+            var lore = boundedTextList(item, "lore", file);
             output.add(new MenuItemDefinition(id, dev.customgui.recipe.ItemSpec.from(iconValues), boundedText(item.getString("name", id), "name", file),
                 lore, SlotParser.parse(rawSlots, size), item.getInt("priority", 0),
                 permission(item.getString("view-permission", ""), file), stringMap(item.getConfigurationSection("click-permissions")), actions,
@@ -214,6 +220,14 @@ public final class ConfigLoader {
         try { net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize(value); }
         catch (RuntimeException ex) { throw new IllegalArgumentException(file + ": invalid MiniMessage in " + key, ex); }
         return value;
+    }
+
+    private static List<String> boundedTextList(ConfigurationSection section, String path, File file) {
+        if (!section.contains(path)) return List.of();
+        Object configured = section.get(path);
+        if (!(configured instanceof List<?> values))
+            throw new IllegalArgumentException(file + ": " + path + " must be a list");
+        return values.stream().map(value -> boundedText(String.valueOf(value), path, file)).toList();
     }
 
     private static String permission(String value, File file) {

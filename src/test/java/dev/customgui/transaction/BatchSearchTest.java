@@ -5,7 +5,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 class BatchSearchTest {
-    @Test void returnsHighestFeasibleForMonotonicInput() {
+    @Test void batch4096RemainsBoundedAndFindsHighestValue() {
         var checks = new AtomicInteger();
         assertEquals(3071, BatchSearch.highestFeasible(4096, value -> { checks.incrementAndGet(); return value <= 3071; }));
         assertEquals(1026, checks.get());
@@ -13,5 +13,6 @@ class BatchSearchTest {
 
     @Test void supportsNonMonotonicFeasibility() {
         assertEquals(64, BatchSearch.highestFeasible(64, value -> value == 64));
+        assertEquals(8, BatchSearch.highestFeasible(10, candidate -> candidate == 3 || candidate == 8));
     }
 }

@@ -12,7 +12,11 @@ public final class RecipeValidator {
             if (!REQUIREMENTS.contains(type)) throw new IllegalArgumentException("unsupported requirement: " + type);
             var values = requirement.values();
             switch (type) {
-                case "item" -> { ItemSpec.from(values); dev.customgui.integration.enchant.EnchantmentSpec.from(values); }
+                case "item" -> {
+                    ItemSpec.from(values);
+                    dev.customgui.integration.enchant.EnchantmentSpec.from(values);
+                    if (values.containsKey("consume")) strictBoolean(values.get("consume"), "consume");
+                }
                 case "money", "currency" -> positiveDecimal(values.get("amount"), "amount");
                 case "permission" -> required(values.get("permission"), "permission");
                 case "level" -> nonNegative(values.getOrDefault("amount", values.get("min-level")), "level");
@@ -40,6 +44,12 @@ public final class RecipeValidator {
     private static int nonNegative(Object value, String key) {
         int number = ItemSpec.exactInteger(value, key);
         if (number < 0) throw new IllegalArgumentException(key + " must be non-negative"); return number;
+    }
+    private static boolean strictBoolean(Object value, String key) {
+        if (value instanceof Boolean bool) return bool;
+        if (value instanceof String text && (text.equalsIgnoreCase("true") || text.equalsIgnoreCase("false")))
+            return Boolean.parseBoolean(text);
+        throw new IllegalArgumentException(key + " must be true or false");
     }
     private static double positiveDecimal(Object value, String key) {
         double number; try { number = value instanceof Number n ? n.doubleValue() : Double.parseDouble(String.valueOf(value)); }

@@ -16,7 +16,31 @@ import org.bukkit.command.CommandMap;
 import org.junit.jupiter.api.Test;
 
 class MenuCommandRegistryTest {
-    @Test void failedReplacementRestoresOldRegistryWithoutPartialCommands() {
+    @Test void identicalReplacementKeepsExistingCommandsRegistered() {
+        Server server = mock(Server.class);
+        CommandMap map = mock(CommandMap.class);
+        Map<String, Command> known = new LinkedHashMap<>();
+        when(server.getCommandMap()).thenReturn(map);
+        when(map.getKnownCommands()).thenReturn(known);
+        when(map.getCommand(anyString())).thenAnswer(call -> known.get(call.getArgument(0, String.class)));
+        when(map.register(eq("customgui"), any(Command.class))).thenAnswer(call -> {
+            Command command = call.getArgument(1);
+            known.put(command.getName(), command);
+            known.put("customgui:" + command.getName(), command);
+            return true;
+        });
+
+        var registry = new MenuCommandRegistry(server, () -> snapshot("gui", "menus"), null);
+        var plan = registry.plan(snapshot("gui", "menus"));
+        registry.commit(plan);
+        registry.commit(plan);
+
+        verify(map, times(2)).register(eq("customgui"), any(Command.class));
+        assertSame(known.get("gui"), known.get("customgui:gui"));
+        assertSame(known.get("menus"), known.get("customgui:menus"));
+    }
+
+    @Test void changedCommandsAreRejectedBeforeRegistryMutation() {
         Server server = mock(Server.class);
         CommandMap map = mock(CommandMap.class);
         Map<String, Command> known = new LinkedHashMap<>();
@@ -34,11 +58,14 @@ class MenuCommandRegistryTest {
 
         var registry = new MenuCommandRegistry(server, () -> snapshot("old"), null);
         registry.commit(registry.plan(snapshot("old")));
-        assertThrows(IllegalStateException.class, () -> registry.commit(registry.plan(snapshot("new-a", "new-b"))));
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+            () -> registry.commit(registry.plan(snapshot("new-a", "new-b"))));
 
+        assertTrue(failure.getMessage().contains("restart"));
         assertTrue(known.containsKey("old"));
         assertFalse(known.containsKey("new-a"));
         assertFalse(known.containsKey("new-b"));
+        assertEquals(1, registrations.get());
     }
 
     private static ConfigSnapshot snapshot(String... commands) {

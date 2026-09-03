@@ -35,6 +35,24 @@ class ConfigLoaderTest {
         assertThrows(IllegalArgumentException.class, () -> new ConfigLoader().load(directory.toFile(), 2));
     }
 
+    @Test void rejectsMalformedRecipeEntriesInsteadOfSilentlyDroppingThem() throws Exception {
+        write("config.yml", "config-version: 1\n");
+        write("recipes/items.yml", "recipes:\n  free-item:\n    requirements: [not-a-map]\n    results:\n      - {type: give-item, material: DIAMOND}\n");
+        Files.createDirectories(directory.resolve("menus"));
+        var snapshot = new ConfigLoader().load(directory.toFile(), 1);
+        assertEquals(1, snapshot.invalidRecipes().size());
+        assertEquals(0, snapshot.recipes().all().size());
+    }
+
+    @Test void rejectsLossyNumbersAndInvalidConsumeFlags() throws Exception {
+        write("config.yml", "config-version: 1\n");
+        write("recipes/items.yml", "recipes:\n  lossy:\n    requirements:\n      - {type: level, amount: 1.5}\n    results:\n      - {type: give-item, material: DIAMOND}\n  bad-consume:\n    requirements:\n      - {type: item, material: STONE, consume: sometimes}\n    results:\n      - {type: give-item, material: DIAMOND}\n");
+        Files.createDirectories(directory.resolve("menus"));
+        var snapshot = new ConfigLoader().load(directory.toFile(), 1);
+        assertEquals(2, snapshot.invalidRecipes().size());
+        assertEquals(0, snapshot.recipes().all().size());
+    }
+
     private void write(String relative, String contents) throws Exception {
         Path path = directory.resolve(relative); Files.createDirectories(path.getParent()); Files.writeString(path, contents);
     }

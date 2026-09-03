@@ -19,6 +19,7 @@ public final class MenuCommandRegistry {
     private final Supplier<ConfigSnapshot> snapshot;
     private final GuiService gui;
     private Map<String, MenuCommand> registered = Map.of();
+    private Map<String, String> registeredMenus = Map.of();
 
     public MenuCommandRegistry(Server server, Supplier<ConfigSnapshot> snapshot, GuiService gui) {
         this.commandMap = server.getCommandMap(); this.snapshot = snapshot; this.gui = gui;
@@ -38,7 +39,16 @@ public final class MenuCommandRegistry {
     }
 
     public void commit(CommandReplacementPlan plan) {
+        // Re-registering an identical set of legacy Bukkit commands is not a no-op on
+        // modern Paper: the command dispatcher can retain the just-unregistered labels
+        // until its next sync, causing registration and then rollback to fail. Menu
+        // commands resolve GUI content through the live snapshot, so keeping the
+        // existing command objects is both sufficient and safer for ordinary reloads.
+        if (registeredMenus.equals(plan.commands())) return;
+        if (!registered.isEmpty())
+            throw new IllegalArgumentException("menu open-commands cannot be changed during reload; restart the server");
         Map<String, MenuCommand> previous = registered;
+        Map<String, String> previousMenus = registeredMenus;
         var replacement = new LinkedHashMap<String, MenuCommand>();
         try {
             previous.values().forEach(this::unregister);
@@ -49,6 +59,7 @@ public final class MenuCommandRegistry {
                 replacement.put(entry.getKey(), command);
             }
             registered = Map.copyOf(replacement);
+            registeredMenus = plan.commands();
         } catch (RuntimeException | LinkageError failure) {
             replacement.values().forEach(this::unregister);
             var rollbackFailures = new java.util.ArrayList<String>();
@@ -56,17 +67,17 @@ public final class MenuCommandRegistry {
                 if (!commandMap.register("customgui", entry.getValue()) || commandMap.getCommand(entry.getKey()) != entry.getValue())
                     rollbackFailures.add(entry.getKey());
             registered = previous;
+            registeredMenus = previousMenus;
             if (!rollbackFailures.isEmpty()) throw new IllegalStateException("command rollback failed: " + rollbackFailures, failure);
             throw failure;
         }
     }
 
     public List<String> replace() { commit(plan(snapshot.get())); return List.of(); }
-    public void clear() { registered.values().forEach(this::unregister); registered = Map.of(); }
+    public void clear() { registered.values().forEach(this::unregister); registered = Map.of(); registeredMenus = Map.of(); }
 
     private void unregister(MenuCommand command) {
         command.unregister(commandMap);
-        commandMap.getKnownCommands().entrySet().removeIf(entry -> entry.getValue() == command);
     }
 
     public record CommandReplacementPlan(Map<String, String> commands) {
