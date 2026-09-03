@@ -20,13 +20,31 @@ public final class ItemProviderRegistry {
     }
 
     public boolean matches(ItemStack stack, dev.customgui.recipe.ItemSpec spec) {
+        return matches(stack, spec, false);
+    }
+
+    public boolean matches(ItemStack stack, dev.customgui.recipe.ItemSpec spec, boolean allowEnchantedLore) {
         var provider = find(spec.provider()).orElse(null);
         if (provider == null) return false;
-        if (spec.provider().equals("vanilla") && providers.values().stream()
+        if (spec.provider().equals("vanilla") && isCustomItem(stack, allowEnchantedLore)) return false;
+        try {
+            if (allowEnchantedLore && provider instanceof VanillaItemProvider vanilla) {
+                return vanilla.matches(stack, spec, true);
+            }
+            return provider.matches(stack, spec);
+        } catch (RuntimeException | LinkageError ex) { return false; }
+    }
+
+    public boolean isCustomItem(ItemStack stack) {
+        return isCustomItem(stack, false);
+    }
+
+    public boolean isCustomItem(ItemStack stack, boolean allowEnchantedLore) {
+        if (stack == null || stack.getType().isAir()) return false;
+        if (providers.values().stream()
             .filter(candidate -> !candidate.id().equals("vanilla") && candidate.ready())
-            .anyMatch(candidate -> safeIdentify(candidate, stack))) return false;
-        try { return provider.matches(stack, spec); }
-        catch (RuntimeException | LinkageError ex) { return false; }
+            .anyMatch(candidate -> safeIdentify(candidate, stack))) return true;
+        return VanillaItemProvider.hasCustomIdentity(stack, allowEnchantedLore);
     }
 
     public Map<String, Boolean> statuses() {

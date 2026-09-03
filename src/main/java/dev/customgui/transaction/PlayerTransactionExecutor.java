@@ -226,8 +226,9 @@ public final class PlayerTransactionExecutor {
         return type.equalsIgnoreCase("item") || type.equalsIgnoreCase("money") || type.equalsIgnoreCase("currency");
     }
     private boolean matches(ItemStack stack, ItemSpec spec, Map<String, Object> values) {
-        if (!providers.matches(stack, spec)) return false;
         Map<String, Integer> enchantments = EnchantmentSpec.from(values);
+        boolean allowEnchantedLore = !enchantments.isEmpty();
+        if (!providers.matches(stack, spec, allowEnchantedLore)) return false;
         return enchantments.isEmpty() || crazyEnchantments != null && crazyEnchantments.matches(stack, values);
     }
     private static int[] amounts(ItemStack[] stacks) {
