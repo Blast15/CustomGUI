@@ -9,6 +9,9 @@ class RecipeValidatorTest {
     @Test void rejectsUnknownHandlersAndInvalidChance() {
         assertThrows(IllegalArgumentException.class, () -> RecipeValidator.validate(recipe(new RequirementSpec("invented", Map.of()))));
         assertThrows(IllegalArgumentException.class, () -> RecipeValidator.validate(recipe(new RequirementSpec("chance", Map.of("chance", 1.1)))));
+        assertThrows(IllegalArgumentException.class, () -> RecipeValidator.validate(recipe(new RequirementSpec("chance", Map.of("chance", -0.1)))));
+        assertDoesNotThrow(() -> RecipeValidator.validate(recipe(new RequirementSpec("chance", Map.of("chance", 0)))));
+        assertDoesNotThrow(() -> RecipeValidator.validate(recipe(new RequirementSpec("chance", Map.of("chance", 1)))));
     }
     @Test void rejectsFractionalAndOverflowingIntegerRequirements() {
         assertThrows(IllegalArgumentException.class, () -> RecipeValidator.validate(recipe(new RequirementSpec("level", Map.of("amount", 1.5)))));

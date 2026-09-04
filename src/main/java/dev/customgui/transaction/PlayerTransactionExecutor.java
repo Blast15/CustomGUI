@@ -104,6 +104,8 @@ public final class PlayerTransactionExecutor {
                         throw new IllegalStateException("inventory changed during commit");
                     committed.add(mutation);
                     inventory.setItem(mutation.slot(), clone(mutation.after()));
+                    if (!java.util.Objects.equals(mutation.after(), inventory.getItem(mutation.slot())))
+                        throw new IllegalStateException("inventory mutation was not applied at slot " + mutation.slot());
                 }
             } catch (RuntimeException | LinkageError ex) {
                 CompensationReport report = compensate(inventory, committed, withdrew, player, plan.money());
@@ -238,7 +240,7 @@ public final class PlayerTransactionExecutor {
             case "experience" -> player.getTotalExperience() >= integer(values.get("amount"), "amount") ? null : "missing-experience";
             case "world" -> player.getWorld().getName().equalsIgnoreCase(required(values, "world")) ? null : "wrong-world";
             case "game-mode" -> player.getGameMode().name().equalsIgnoreCase(required(values, "game-mode")) ? null : "wrong-game-mode";
-            case "chance" -> java.util.concurrent.ThreadLocalRandom.current().nextDouble() < decimal(values.get("chance"), "chance") ? null : "chance-failed";
+            case "chance" -> java.util.concurrent.ThreadLocalRandom.current().nextDouble() < probability(values.get("chance")) ? null : "chance-failed";
             case "placeholder" -> {
                 if (placeholders == null) yield "provider-unavailable";
                 String actual = placeholders.parse(player, required(values, "placeholder"));
@@ -270,6 +272,15 @@ public final class PlayerTransactionExecutor {
         else try { amount = Double.parseDouble(String.valueOf(value)); } catch (NumberFormatException ex) { throw new IllegalArgumentException(key + " must be decimal"); }
         if (!Double.isFinite(amount) || amount <= 0) throw new IllegalArgumentException(key + " must be finite and positive");
         return amount;
+    }
+    private static double probability(Object value) {
+        double chance;
+        if (value instanceof Number number) chance = number.doubleValue();
+        else try { chance = Double.parseDouble(String.valueOf(value)); }
+        catch (NumberFormatException ex) { throw new IllegalArgumentException("chance must be decimal"); }
+        if (!Double.isFinite(chance) || chance < 0 || chance > 1)
+            throw new IllegalArgumentException("chance must be between 0 and 1");
+        return chance;
     }
     private static PlanAttempt failed(String key) { return new PlanAttempt(null, key); }
     private static TransactionResult result(UUID id, TransactionResult.Status status, String key, int batch) {

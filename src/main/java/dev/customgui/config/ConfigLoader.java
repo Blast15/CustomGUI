@@ -67,6 +67,12 @@ public final class ConfigLoader {
                 if (recipes.putIfAbsent(id, parsed) != null) invalidRecipes.put(file.getName() + ':' + id, "duplicate recipe id");
             } catch (RuntimeException ex) { invalidRecipes.put(file.getName() + ':' + id, ex.getMessage()); }
         });
+        if (!invalidRecipes.isEmpty()) {
+            String details = invalidRecipes.entrySet().stream()
+                .map(entry -> entry.getKey() + ": " + entry.getValue())
+                .collect(java.util.stream.Collectors.joining("; "));
+            throw new IllegalArgumentException("recipe validation failed: " + details);
+        }
         validateMenuLinks(menus, recipes);
         return new ConfigSnapshot(revision, menus, new RecipeRegistry(recipes.values()), messages, invalidRecipes,
             config.getBoolean("security.allow-player-inventory-interaction", false),

@@ -471,6 +471,65 @@ public class CraftingTransactionRegressionTest {
         assertTrue(Arrays.equals(before, storageContents));
     }
 
+    @Test
+    void silentInventoryWriteFailureIsDetectedAndRolledBack() {
+        storageContents[0] = vanillaHelmet();
+        storageContents[1] = ingredientA();
+        storageContents[2] = ingredientB();
+        ItemStack[] before = InventorySimulation.cloneContents(storageContents);
+        org.mockito.Mockito.doNothing().when(inventory).setItem(
+            org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.nullable(ItemStack.class));
+
+        TransactionResult result = executor.execute(player, createUpgradeHelmetRecipe(), 1);
+
+        assertEquals(TransactionResult.Status.ROLLED_BACK, result.status(), result.toString());
+        assertTrue(result.compensation().complete());
+        assertTrue(Arrays.equals(before, storageContents));
+    }
+
+    @Test
+    void rejectsReentrantTransactionForSamePlayer() {
+        EconomyBridge economy = mock(EconomyBridge.class);
+        when(economy.ready()).thenReturn(true);
+        when(economy.has(player, 1.0)).thenReturn(true);
+        var nested = new java.util.concurrent.atomic.AtomicReference<TransactionResult>();
+        Recipe free = new Recipe("nested", "exchange", "default", true, List.of(),
+            List.of(new ResultSpec("give-item", Map.of("provider", "custom", "id", "custom_emerald", "amount", 1))));
+        executor = new PlayerTransactionExecutor(providers, economy, null, () -> 64, System.err::println);
+        when(economy.withdraw(player, 1.0)).thenAnswer(invocation -> {
+            nested.set(executor.execute(player, free, 1));
+            return EconomyBridge.Outcome.REJECTED;
+        });
+        Recipe paid = new Recipe("paid", "exchange", "default", true,
+            List.of(new RequirementSpec("money", Map.of("amount", 1.0))),
+            List.of(new ResultSpec("give-item", Map.of("provider", "custom", "id", "custom_emerald", "amount", 1))));
+
+        TransactionResult outer = executor.execute(player, paid, 1);
+
+        assertEquals(TransactionResult.Status.REJECTED, outer.status());
+        assertNotNull(nested.get());
+        assertEquals(TransactionResult.Status.BUSY, nested.get().status());
+    }
+
+    @Test
+    void fiftySequentialTransactionsPreserveExactTotals() {
+        storageContents[0] = createStack(Material.DIAMOND, 50, false, null);
+        Recipe recipe = new Recipe("stress", "exchange", "default", true,
+            List.of(new RequirementSpec("item", Map.of("provider", "vanilla", "material", "DIAMOND", "amount", 1))),
+            List.of(new ResultSpec("give-item", Map.of("provider", "custom", "id", "custom_emerald", "amount", 1))));
+
+        for (int attempt = 0; attempt < 50; attempt++)
+            assertEquals(TransactionResult.Status.SUCCESS, executor.execute(player, recipe, 1).status());
+
+        int diamonds = Arrays.stream(storageContents).filter(Objects::nonNull)
+            .filter(stack -> stack.getType() == Material.DIAMOND).mapToInt(ItemStack::getAmount).sum();
+        int outputs = Arrays.stream(storageContents).filter(Objects::nonNull)
+            .filter(stack -> customProvider.matches(stack, new ItemSpec("custom", "custom_emerald", "", 1)))
+            .mapToInt(ItemStack::getAmount).sum();
+        assertEquals(0, diamonds);
+        assertEquals(50, outputs);
+    }
+
     /** Regression Test 11: Failed transaction never partially consumes requirements */
     @Test
     void failedTransactionNeverPartiallyConsumesRequirements() {
