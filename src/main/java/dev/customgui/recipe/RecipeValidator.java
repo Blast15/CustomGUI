@@ -16,6 +16,7 @@ public final class RecipeValidator {
                     ItemSpec.from(values);
                     dev.customgui.integration.enchant.EnchantmentSpec.from(values);
                     if (values.containsKey("consume")) strictBoolean(values.get("consume"), "consume");
+                    if (values.containsKey("include-shulkers")) strictBoolean(values.get("include-shulkers"), "include-shulkers");
                 }
                 case "money", "currency" -> positiveDecimal(values.get("amount"), "amount");
                 case "permission" -> required(values.get("permission"), "permission");

@@ -134,6 +134,7 @@ Actions can be assigned to `click`, `left`, `right`, `shift-left`, `shift-right`
 - `1`, `16`, `64`, or any positive value up to `security.max-batch-size` executes exactly that many copies.
 - `all` finds the largest affordable batch up to the configured cap.
 - All consumed requirements share one virtual inventory plan; one stack cannot pay twice.
+- An item requirement with `include-shulkers: true` can count and atomically consume matching items inside Shulker Boxes carried in the player's storage inventory. Loose inventory stacks are used first; outputs are still placed in the main inventory.
 - Non-consumed tool/key requirements remain base-sized rather than multiplying with the batch.
 - Inputs, money, output construction, partial-stack merging, and capacity are validated before one inventory commit.
 - The complete storage inventory is revalidated after external economy callbacks; conflicts never overwrite newer state.

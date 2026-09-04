@@ -9,7 +9,6 @@ import dev.customgui.recipe.ItemSpec;
 import dev.customgui.recipe.Recipe;
 import dev.customgui.requirement.PlaceholderComparison;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.UUID;
@@ -167,8 +166,7 @@ public final class PlayerTransactionExecutor {
                 ItemSpec spec = ItemSpec.from(requirement.values());
                 var provider = providers.find(spec.provider()).orElse(null);
                 if (provider == null) continue;
-                int found = 0;
-                for (ItemStack stack : before) if (matches(stack, spec, requirement.values())) found = Math.addExact(found, stack.getAmount());
+                int found = count(before, spec, requirement.values(), includeShulkers(requirement.values()));
                 upper = Math.min(upper, found / spec.amount());
             } else if (requirement.type().equalsIgnoreCase("money") || requirement.type().equalsIgnoreCase("currency"))
                 moneyPerBatch += decimal(requirement.values().get("amount"), "amount");
@@ -185,9 +183,7 @@ public final class PlayerTransactionExecutor {
     }
 
     private PlanAttempt plan(Player player, Recipe recipe, ItemStack[] before, int batch) {
-        int[] available = new int[before.length];
-        for (int slot = 0; slot < before.length; slot++) available[slot] = before[slot] == null ? 0 : before[slot].getAmount();
-        var removals = new ArrayList<PlannedRemoval>();
+        ItemStack[] working = InventorySimulation.cloneContents(before);
         double money = 0;
         for (boolean consumePass : new boolean[] {true, false}) for (var requirement : recipe.requirements()) {
             if (requirement.type().equalsIgnoreCase("item")) {
@@ -197,20 +193,14 @@ public final class PlayerTransactionExecutor {
                 boolean consume = Boolean.parseBoolean(String.valueOf(requirement.values().getOrDefault("consume", true)));
                 if (consume != consumePass) continue;
                 int needed = consume ? Math.multiplyExact(spec.amount(), batch) : spec.amount();
-                var itemPlan = InventoryPlanner.plan(available, needed, slot -> matches(before[slot], spec, requirement.values()));
-                if (itemPlan.isEmpty()) return failed("missing-items");
-                if (consume) for (var removal : itemPlan) {
-                    available[removal.slot()] -= removal.amount();
-                    removals.add(new PlannedRemoval(removal.slot(), removal.amount(), spec));
-                }
+                if (!take(working, spec, requirement.values(), needed, consume, includeShulkers(requirement.values())))
+                    return failed("missing-items");
             } else if (consumePass && (requirement.type().equalsIgnoreCase("money") || requirement.type().equalsIgnoreCase("currency"))) {
                 money += decimal(requirement.values().get("amount"), "amount") * batch;
             }
         }
         if (!Double.isFinite(money)) return failed("invalid-money");
         if (money > 0 && (economy == null || !economy.ready() || !economy.has(player, money))) return failed("missing-money");
-        var totals = new HashMap<Integer, Integer>();
-        for (var removal : removals) totals.merge(removal.slot(), removal.amount(), Math::addExact);
         var outputs = new ArrayList<ItemStack>();
         for (var output : recipe.results()) {
             if (!output.type().equalsIgnoreCase("give-item")) return failed("unsupported-result");
@@ -226,10 +216,63 @@ public final class PlayerTransactionExecutor {
             if (crazyEnchantments != null) created = crazyEnchantments.apply(created, output.values());
             outputs.add(created.clone());
         }
-        var simulated = InventorySimulation.apply(before, totals, outputs);
+        var simulated = InventorySimulation.apply(working, Map.of(), outputs);
         double totalMoney = money;
-        return simulated.<PlanAttempt>map(items -> new PlanAttempt(new Plan(java.util.List.copyOf(removals), items, totalMoney), null))
+        return simulated.<PlanAttempt>map(items -> new PlanAttempt(new Plan(items, totalMoney), null))
             .orElseGet(() -> failed("inventory-full"));
+    }
+
+    private int count(ItemStack[] inventory, ItemSpec spec, Map<String, Object> values, boolean includeShulkers) {
+        int found = 0;
+        for (ItemStack stack : inventory)
+            if (matches(stack, spec, values)) found = Math.addExact(found, stack.getAmount());
+        if (!includeShulkers) return found;
+        for (ItemStack container : inventory) {
+            ItemStack[] contents = ShulkerBoxInventory.contents(container);
+            if (contents == null) continue;
+            for (ItemStack stack : contents)
+                if (matches(stack, spec, values)) found = Math.addExact(found, stack.getAmount());
+        }
+        return found;
+    }
+
+    private boolean take(ItemStack[] inventory, ItemSpec spec, Map<String, Object> values, int required,
+                         boolean consume, boolean includeShulkers) {
+        int remaining = required;
+        for (int slot = 0; slot < inventory.length && remaining > 0; slot++) {
+            ItemStack stack = inventory[slot];
+            if (!matches(stack, spec, values)) continue;
+            int taken = Math.min(stack.getAmount(), remaining);
+            if (consume) {
+                if (taken == stack.getAmount()) inventory[slot] = null;
+                else stack.setAmount(stack.getAmount() - taken);
+            }
+            remaining -= taken;
+        }
+        if (!includeShulkers || remaining == 0) return remaining == 0;
+        for (ItemStack container : inventory) {
+            ItemStack[] contents = ShulkerBoxInventory.contents(container);
+            if (contents == null) continue;
+            boolean changed = false;
+            for (int slot = 0; slot < contents.length && remaining > 0; slot++) {
+                ItemStack stack = contents[slot];
+                if (!matches(stack, spec, values)) continue;
+                int taken = Math.min(stack.getAmount(), remaining);
+                if (consume) {
+                    if (taken == stack.getAmount()) contents[slot] = null;
+                    else stack.setAmount(stack.getAmount() - taken);
+                    changed = true;
+                }
+                remaining -= taken;
+            }
+            if (changed) ShulkerBoxInventory.setContents(container, contents);
+            if (remaining == 0) break;
+        }
+        return remaining == 0;
+    }
+
+    private static boolean includeShulkers(Map<String, Object> values) {
+        return Boolean.parseBoolean(String.valueOf(values.getOrDefault("include-shulkers", false)));
     }
 
     private String checkNonItem(Player player, dev.customgui.recipe.RequirementSpec requirement) {
@@ -286,8 +329,7 @@ public final class PlayerTransactionExecutor {
     private static TransactionResult result(UUID id, TransactionResult.Status status, String key, int batch) {
         return new TransactionResult(id, status, key, batch);
     }
-    private record PlannedRemoval(int slot, int amount, ItemSpec spec) {}
     private record SlotMutation(int slot, ItemStack before, ItemStack after) {}
-    private record Plan(java.util.List<PlannedRemoval> removals, ItemStack[] simulated, double money) {}
+    private record Plan(ItemStack[] simulated, double money) {}
     private record PlanAttempt(Plan plan, String failure) {}
 }

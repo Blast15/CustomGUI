@@ -20,6 +20,7 @@ recipes:
         material: EMERALD      # vanilla dùng material; plugin khác dùng id
         amount: 8              # nguyên liệu cho MỖI lần giao dịch
         consume: true          # true = trừ; false = chỉ cần sở hữu
+        include-shulkers: false # true = tính và trừ cả item trong Shulker Box đang ở inventory
     results:
       - type: give-item
         provider: vanilla
@@ -131,6 +132,7 @@ recipes:
 #
 # Item custom từ ItemsAdder/Oraxen/Nexo:
 #   - {type: item, provider: itemsadder, id: "namespace:ruby", amount: 5, consume: true}
+# Thêm include-shulkers: true để requirement tìm và trừ item cả trong Shulker Box.
 #
 # Item MMOItems cần cả item-type và id:
 #   - {type: item, provider: mmoitems, item-type: MATERIAL, id: MYTHRIL, amount: 5, consume: true}

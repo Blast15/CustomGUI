@@ -29,10 +29,13 @@ import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Server;
+import org.bukkit.block.ShulkerBox;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemFactory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.inventory.meta.BlockStateMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.junit.jupiter.api.AfterEach;
@@ -530,6 +533,44 @@ public class CraftingTransactionRegressionTest {
         assertEquals(50, outputs);
     }
 
+    @Test
+    void consumesLooseItemsThenItemsInsideShulkerAtomically() {
+        storageContents[0] = createStack(Material.DIAMOND, 2, false, null);
+        storageContents[1] = new TestShulkerStack(new ItemStack[] {
+            createStack(Material.DIAMOND, 5, false, null),
+            createStack(Material.GOLD_INGOT, 3, false, null)
+        });
+        Recipe recipe = new Recipe("shulker_items", "exchange", "default", true,
+            List.of(new RequirementSpec("item", Map.of(
+                "provider", "vanilla", "material", "DIAMOND", "amount", 4,
+                "consume", true, "include-shulkers", true))),
+            List.of(new ResultSpec("give-item", Map.of("provider", "custom", "id", "custom_emerald", "amount", 1))));
+
+        TransactionResult result = executor.execute(player, recipe, 0);
+
+        assertEquals(TransactionResult.Status.SUCCESS, result.status(), result.toString());
+        assertEquals(1, result.batchSize());
+        ItemStack[] contents = ((TestShulkerStack) storageContents[1]).contents();
+        assertEquals(3, contents[0].getAmount());
+        assertEquals(3, contents[1].getAmount());
+        assertTrue(customProvider.matches(storageContents[0], new ItemSpec("custom", "custom_emerald", "", 1)));
+    }
+
+    @Test
+    void ignoresShulkerContentsUnlessRequirementOptsIn() {
+        storageContents[0] = new TestShulkerStack(new ItemStack[] {createStack(Material.DIAMOND, 5, false, null)});
+        ItemStack before = storageContents[0].clone();
+        Recipe recipe = new Recipe("no_shulker_scan", "exchange", "default", true,
+            List.of(new RequirementSpec("item", Map.of("provider", "vanilla", "material", "DIAMOND", "amount", 1))),
+            List.of(new ResultSpec("give-item", Map.of("provider", "custom", "id", "custom_emerald", "amount", 1))));
+
+        TransactionResult result = executor.execute(player, recipe, 1);
+
+        assertEquals(TransactionResult.Status.REJECTED, result.status());
+        assertEquals("missing-items", result.messageKey());
+        assertEquals(before, storageContents[0]);
+    }
+
     /** Regression Test 11: Failed transaction never partially consumes requirements */
     @Test
     void failedTransactionNeverPartiallyConsumesRequirements() {
@@ -672,6 +713,63 @@ public class CraftingTransactionRegressionTest {
         @Override
         public TestItemStack clone() {
             return new TestItemStack(material, amount, custom, name);
+        }
+    }
+
+    private static final class TestShulkerStack extends ItemStack {
+        private ItemStack[] contents;
+        private int amount = 1;
+
+        private TestShulkerStack(ItemStack[] contents) {
+            this.contents = InventorySimulation.cloneContents(contents);
+        }
+
+        ItemStack[] contents() { return InventorySimulation.cloneContents(contents); }
+        @Override public Material getType() { return Material.WHITE_SHULKER_BOX; }
+        @Override public int getAmount() { return amount; }
+        @Override public void setAmount(int amount) { this.amount = amount; }
+        @Override public int getMaxStackSize() { return 1; }
+        @Override public boolean hasItemMeta() { return true; }
+
+        @Override
+        public BlockStateMeta getItemMeta() {
+            ItemStack[][] current = {InventorySimulation.cloneContents(contents)};
+            Inventory boxInventory = mock(Inventory.class);
+            when(boxInventory.getStorageContents()).thenAnswer(inv -> InventorySimulation.cloneContents(current[0]));
+            org.mockito.Mockito.doAnswer(inv -> {
+                current[0] = InventorySimulation.cloneContents(inv.getArgument(0));
+                return null;
+            }).when(boxInventory).setStorageContents(any(ItemStack[].class));
+            ShulkerBox state = mock(ShulkerBox.class);
+            when(state.getInventory()).thenReturn(boxInventory);
+            BlockStateMeta meta = mock(BlockStateMeta.class);
+            configureMeta(meta, false, null);
+            when(meta.getBlockState()).thenReturn(state);
+            return meta;
+        }
+
+        @Override
+        public boolean setItemMeta(ItemMeta itemMeta) {
+            if (!(itemMeta instanceof BlockStateMeta meta) || !(meta.getBlockState() instanceof ShulkerBox state)) return false;
+            contents = InventorySimulation.cloneContents(state.getInventory().getStorageContents());
+            return true;
+        }
+
+        @Override
+        public boolean isSimilar(ItemStack other) {
+            return other instanceof TestShulkerStack shulker && Arrays.equals(contents, shulker.contents);
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            return other instanceof TestShulkerStack shulker && amount == shulker.amount && isSimilar(shulker);
+        }
+
+        @Override
+        public TestShulkerStack clone() {
+            TestShulkerStack copy = new TestShulkerStack(contents);
+            copy.amount = amount;
+            return copy;
         }
     }
 

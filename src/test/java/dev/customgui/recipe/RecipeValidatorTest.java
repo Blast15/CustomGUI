@@ -17,6 +17,12 @@ class RecipeValidatorTest {
         assertThrows(IllegalArgumentException.class, () -> RecipeValidator.validate(recipe(new RequirementSpec("level", Map.of("amount", 1.5)))));
         assertThrows(IllegalArgumentException.class, () -> RecipeValidator.validate(recipe(new RequirementSpec("experience", Map.of("amount", 4_294_967_296L)))));
     }
+    @Test void validatesIncludeShulkersAsStrictBoolean() {
+        assertDoesNotThrow(() -> RecipeValidator.validate(recipe(new RequirementSpec("item",
+            Map.of("material", "DIAMOND", "include-shulkers", true)))));
+        assertThrows(IllegalArgumentException.class, () -> RecipeValidator.validate(recipe(new RequirementSpec("item",
+            Map.of("material", "DIAMOND", "include-shulkers", "yes")))));
+    }
     private Recipe recipe(RequirementSpec requirement) {
         return new Recipe("valid", "g", "c", true, List.of(requirement),
             List.of(new ResultSpec("give-item", Map.of("provider", "vanilla", "material", "STONE"))));
